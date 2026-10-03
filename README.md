@@ -29,16 +29,18 @@ Contracts in `contracts/` are structured for Polkadot's next-generation **PolkaV
 ### 4. x402 Bazaar Protocol (Production Subxt On-Chain Verification)
 The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline directly in `services/api` using `SubxtOnChainVerifier` (`subxt v0.51`):
 ```text
-HTTP Request (with optional X-Block-Hash)
+HTTP Request (with X-Block-Hash & payment proof)
   └─► 402 Payment Required (Challenge ID + SS58 Merchant + Amount)
         └─► On-Chain Polkadot Transaction
               └─► Subxt Live WebSocket RPC Inspection (OnlineClient<PolkadotConfig>)
-                    └─► Finalized Block Check -> SCALE Event Decoders
-                          ├── Balances::Transfer (Native DOT)
-                          └── pallet_assets::Transferred (Asset Hub Fungible Assets)
-                                └─► Recipient & Amount Matching
-                                      └─► Anti-Replay Cache Verification
-                                            └─► Resource Unlocked
+                    └─► Exact Extrinsic Blake2b Hash Match (xt.hash() == target_tx_hash)
+                          └─► Extrinsic Index Resolution & Phase Filtering (ApplyExtrinsic(idx))
+                                └─► Header Height Extraction (true finalized block number)
+                                      └─► Decoded Event Extraction (Balances::Transfer / pallet_assets::Transferred)
+                                            ├── Payer ↔ Sender Identity Equality Check (proof.payer == onchain.sender)
+                                            ├── Recipient & Amount Boundary Matching
+                                            └── Composite Anti-Replay Guard (block_hash:extrinsic_index)
+                                                  └─► Resource Unlocked
 ```
 
 ### 5. Polkadot Agent Kit & Model Context Protocol (MCP)
@@ -93,7 +95,7 @@ cargo fmt --all -- --check
 # 2. Strict static analysis (zero warnings allowed)
 cargo clippy --workspace --all-targets -- -D warnings
 
-# 3. Workspace unit and integration tests (53 tests passed)
+# 3. Workspace unit and integration tests (55 tests passed)
 cargo test --workspace
 ```
 
@@ -105,12 +107,12 @@ cargo test --workspace
 | `qmoosa-pqc` | NIST FIPS 204 ML-DSA-65 | 6 | 3309-byte lattice signatures, tampered payload, wrong pubkey, corrupted sig, replay, expiration |
 | `qmoosa-qdot-token` | PolkaVM QDOT Token | 5 | Mint/Burn, Pause, Access Control, PolkaVM message dispatch & events |
 | `qmoosa-launchpad` | Presale & Vesting | 5 | Token purchase, time-locked claim, fee routing, PolkaVM message dispatch |
-| `qmoosa-x402` | Subxt On-Chain Verifier | 13 | Subxt event decoders (Balances::Transfer, Assets::Transferred), live RPC connection/fallback, finality, anti-replay |
+| `qmoosa-x402` | Subxt On-Chain Verifier | 15 | Subxt event decoders (Balances::Transfer, Assets::Transferred), exact extrinsic hash match, phase filtering, true header height, payer-sender equality, composite replay guard |
 | `qmoosa-x402-settlement` | On-Chain Settlement Registry | 4 | Micro-settlement, fee splits, replay protection, PolkaVM message dispatch |
 | `qmoosa-agent-core` | Polkadot Agent Kit & MCP | 14 | Intent routing, Agent Kit tool registry, native/asset/XCM tool calls, external MCP client interop suite |
 | `qmoosa-api` | Production API & Gateway | 5 | Health introspection, 402 challenge flow, Subxt verifier authorization, MCP JSON-RPC, tool listing |
 | `qmoosa-conway` | Cellular Automaton Triggers | 2 | Glider simulation, epoch milestone event dispatch |
-| **Total** | **Full Workspace** | **53** | **100% Passed (0 Failures, 1 Optional Testnet Skipped)** |
+| **Total** | **Full Workspace** | **55** | **100% Passed (0 Failures, 1 Optional Testnet Skipped)** |
 
 ---
 

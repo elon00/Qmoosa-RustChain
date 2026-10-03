@@ -331,7 +331,15 @@ mod tests {
         // Register in SubxtOnChainVerifier
         state
             .onchain_verifier
-            .register_finalized_transfer(&tx_hash, 100, 105, &raw_scale_event, "DOT")
+            .register_finalized_transfer(
+                &tx_hash,
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                100,
+                2,
+                105,
+                &raw_scale_event,
+                "DOT",
+            )
             .unwrap();
 
         // 3. Send headers with payment proof

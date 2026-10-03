@@ -20,6 +20,8 @@ pub enum X402Error {
     TransactionNotFound(String),
     #[error("On-chain transaction has not reached finality")]
     TransactionNotFinalized,
+    #[error("Sender mismatch: claimed payer was {expected}, but on-chain sender was {actual}")]
+    SenderMismatch { expected: String, actual: String },
     #[error("Recipient mismatch: expected {expected}, got {actual}")]
     RecipientMismatch { expected: String, actual: String },
     #[error("Asset mismatch: expected {expected}, got {actual}")]
@@ -53,7 +55,9 @@ pub struct X402Proof {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OnChainPaymentDetails {
     pub tx_hash: String,
+    pub block_hash: String,
     pub block_number: u64,
+    pub extrinsic_index: u32,
     pub sender: AccountId32,
     pub recipient: AccountId32,
     pub amount: u128,
@@ -231,11 +235,14 @@ impl SubxtOnChainVerifier {
         Ok(())
     }
 
-    /// Ingests and registers an on-chain Substrate finalized native transfer event
+    /// Ingests and registers an on-chain Substrate finalized native transfer event with exact block & extrinsic index
+    #[allow(clippy::too_many_arguments)]
     pub fn register_finalized_transfer(
         &self,
         tx_hash: &str,
+        block_hash: &str,
         block_number: u64,
+        extrinsic_index: u32,
         finalized_head_block: u64,
         raw_scale_event: &[u8],
         asset: &str,
@@ -245,7 +252,9 @@ impl SubxtOnChainVerifier {
 
         let details = OnChainPaymentDetails {
             tx_hash: tx_hash.to_string(),
+            block_hash: block_hash.to_string(),
             block_number,
+            extrinsic_index,
             sender: event.from,
             recipient: event.to,
             amount: event.amount,
@@ -259,10 +268,13 @@ impl SubxtOnChainVerifier {
     }
 
     /// Ingests and registers an on-chain Substrate finalized fungible asset transfer event (Asset Hub)
+    #[allow(clippy::too_many_arguments)]
     pub fn register_finalized_asset_transfer(
         &self,
         tx_hash: &str,
+        block_hash: &str,
         block_number: u64,
+        extrinsic_index: u32,
         finalized_head_block: u64,
         raw_scale_event: &[u8],
         asset_symbol: &str,
@@ -272,7 +284,9 @@ impl SubxtOnChainVerifier {
 
         let details = OnChainPaymentDetails {
             tx_hash: tx_hash.to_string(),
+            block_hash: block_hash.to_string(),
             block_number,
+            extrinsic_index,
             sender: event.from,
             recipient: event.to,
             amount: event.amount,
@@ -285,54 +299,135 @@ impl SubxtOnChainVerifier {
         Ok(details)
     }
 
-    /// Ingests and registers events by actively scanning a finalized block using the live Subxt client
+    /// Ingests and registers an on-chain transfer event by actively scanning a finalized block using the live Subxt client.
+    ///
+    /// Cryptographic & Consensus Security Enforcements:
+    /// 1. Finds the exact extrinsic in the block matching `expected_tx_hash` (Blake2b hash match).
+    /// 2. Resolves the real `extrinsic_index` for that extrinsic.
+    /// 3. Extracts the true `block_number` from the verified block header.
+    /// 4. Filters events strictly by `Phase::ApplyExtrinsic(target_index)` so that NO unrelated events
+    ///    in the block can be spoofed or attributed to this transaction.
+    /// 5. Ingests and registers the exact matching transfer details into `verified_events`.
     pub async fn scan_and_register_block(
         &self,
         block_hash_bytes: [u8; 32],
-        tx_hash: &str,
-    ) -> Result<Vec<OnChainPaymentDetails>, X402Error> {
+        expected_tx_hash: &str,
+    ) -> Result<OnChainPaymentDetails, X402Error> {
         let client = self.client.as_ref().ok_or_else(|| {
             X402Error::SubxtRpcError("Subxt live client not connected".to_string())
         })?;
 
-        let evidences = Self::scan_block_events_live(client, block_hash_bytes).await?;
-        let mut registered = Vec::new();
+        let block_hash = subxt::utils::H256::from(block_hash_bytes);
+        let at_block = client
+            .at_block(block_hash)
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
 
-        for ev in evidences {
-            let details = match ev {
-                SubstrateTransferEvidence::NativeTransfer(transfer) => OnChainPaymentDetails {
-                    tx_hash: tx_hash.to_string(),
-                    block_number: 1,
-                    sender: transfer.from,
-                    recipient: transfer.to,
-                    amount: transfer.amount,
-                    asset: "DOT".to_string(),
-                    finalized: true,
-                },
-                SubstrateTransferEvidence::AssetTransfer(transfer) => OnChainPaymentDetails {
-                    tx_hash: tx_hash.to_string(),
-                    block_number: 1,
-                    sender: transfer.from,
-                    recipient: transfer.to,
-                    amount: transfer.amount,
-                    asset: format!("Asset-{}", transfer.asset_id),
-                    finalized: true,
-                },
-            };
+        // 1. Extract real block number from the block header
+        let block_header = at_block
+            .block_header()
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+        let real_block_number = block_header.number as u64;
 
-            let mut guard = self.verified_events.lock().unwrap();
-            guard.insert(tx_hash.to_string(), details.clone());
-            registered.push(details);
+        // 2. Locate exact extrinsic by Blake2b hash
+        let extrinsics = at_block
+            .extrinsics()
+            .fetch()
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+
+        let clean_expected = expected_tx_hash
+            .strip_prefix("0x")
+            .unwrap_or(expected_tx_hash)
+            .to_ascii_lowercase();
+
+        let mut matched_index: Option<u32> = None;
+        for xt_res in extrinsics.iter() {
+            let xt = xt_res.map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+            let hash_hex = hex::encode(xt.hash()).to_ascii_lowercase();
+            if hash_hex == clean_expected {
+                matched_index = Some(xt.index() as u32);
+                break;
+            }
         }
 
-        if registered.is_empty() {
-            Err(X402Error::TransactionNotFound(format!(
-                "No transfer events found in block 0x{}",
+        let target_extrinsic_index = matched_index.ok_or_else(|| {
+            X402Error::TransactionNotFound(format!(
+                "Extrinsic with hash {} not found in block 0x{}",
+                expected_tx_hash,
                 hex::encode(block_hash_bytes)
-            )))
-        } else {
-            Ok(registered)
+            ))
+        })?;
+
+        // 3. Scan events strictly belonging to this exact extrinsic index
+        let events = at_block
+            .events()
+            .fetch()
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+
+        let mut matched_evidence: Option<SubstrateTransferEvidence> = None;
+        for ev_res in events.iter() {
+            let ev = ev_res.map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+            if let subxt::events::Phase::ApplyExtrinsic(idx) = ev.phase() {
+                if idx != target_extrinsic_index {
+                    continue;
+                }
+                if ev.pallet_name() == "Balances" && ev.event_name() == "Transfer" {
+                    if let Ok(transfer) = Self::decode_balances_transfer(ev.bytes()) {
+                        matched_evidence =
+                            Some(SubstrateTransferEvidence::NativeTransfer(transfer));
+                        break;
+                    }
+                } else if ev.pallet_name() == "Assets" && ev.event_name() == "Transferred" {
+                    if let Ok(asset_transfer) = Self::decode_assets_transferred(ev.bytes()) {
+                        matched_evidence =
+                            Some(SubstrateTransferEvidence::AssetTransfer(asset_transfer));
+                        break;
+                    }
+                }
+            }
         }
+
+        let evidence = matched_evidence.ok_or_else(|| {
+            X402Error::TransactionNotFound(format!(
+                "No transfer event found for extrinsic index {} (hash {}) in block 0x{}",
+                target_extrinsic_index,
+                expected_tx_hash,
+                hex::encode(block_hash_bytes)
+            ))
+        })?;
+
+        let block_hash_hex = format!("0x{}", hex::encode(block_hash_bytes));
+        let details = match evidence {
+            SubstrateTransferEvidence::NativeTransfer(transfer) => OnChainPaymentDetails {
+                tx_hash: expected_tx_hash.to_string(),
+                block_hash: block_hash_hex,
+                block_number: real_block_number,
+                extrinsic_index: target_extrinsic_index,
+                sender: transfer.from,
+                recipient: transfer.to,
+                amount: transfer.amount,
+                asset: "DOT".to_string(),
+                finalized: true,
+            },
+            SubstrateTransferEvidence::AssetTransfer(transfer) => OnChainPaymentDetails {
+                tx_hash: expected_tx_hash.to_string(),
+                block_hash: block_hash_hex,
+                block_number: real_block_number,
+                extrinsic_index: target_extrinsic_index,
+                sender: transfer.from,
+                recipient: transfer.to,
+                amount: transfer.amount,
+                asset: format!("Asset-{}", transfer.asset_id),
+                finalized: true,
+            },
+        };
+
+        let mut guard = self.verified_events.lock().unwrap();
+        guard.insert(expected_tx_hash.to_string(), details.clone());
+        Ok(details)
     }
 }
 
@@ -434,7 +529,25 @@ impl X402BazaarGateway {
             return Err(X402Error::TransactionNotFinalized);
         }
 
-        // 6. Recipient address check
+        // 6. Cryptographic binding: Sender MUST match claimed payer address
+        if onchain.sender != proof.payer_address {
+            return Err(X402Error::SenderMismatch {
+                expected: proof.payer_address.to_string(),
+                actual: onchain.sender.to_string(),
+            });
+        }
+
+        // 7. Composite Anti-Replay check: block_hash + extrinsic_index uniquely identifies on-chain transfer
+        let composite_extrinsic_key = format!("{}:{}", onchain.block_hash, onchain.extrinsic_index);
+        {
+            let mut tx_guard = SETTLED_TX_HASHES.lock().unwrap();
+            let t_set = tx_guard.get_or_insert_with(HashSet::new);
+            if t_set.contains(&composite_extrinsic_key) {
+                return Err(X402Error::ReplayDetected);
+            }
+        }
+
+        // 8. Recipient address check
         if onchain.recipient != self.merchant_address {
             return Err(X402Error::RecipientMismatch {
                 expected: self.merchant_address.to_string(),
@@ -442,7 +555,7 @@ impl X402BazaarGateway {
             });
         }
 
-        // 7. Asset check
+        // 9. Asset check
         if onchain.asset != challenge.asset {
             return Err(X402Error::AssetMismatch {
                 expected: challenge.asset.clone(),
@@ -450,7 +563,7 @@ impl X402BazaarGateway {
             });
         }
 
-        // 8. Amount check (must be >= requested challenge amount)
+        // 10. Amount check (must be >= requested challenge amount)
         if onchain.amount < challenge.amount {
             return Err(X402Error::InsufficientPayment {
                 expected: challenge.amount,
@@ -458,7 +571,7 @@ impl X402BazaarGateway {
             });
         }
 
-        // 9. Mark challenge & tx hash as settled
+        // 11. Mark challenge, tx hash, and composite extrinsic key as settled
         {
             let mut c_guard = SETTLED_CHALLENGES.lock().unwrap();
             if let Some(set) = c_guard.as_mut() {
@@ -468,6 +581,7 @@ impl X402BazaarGateway {
             let mut t_guard = SETTLED_TX_HASHES.lock().unwrap();
             if let Some(set) = t_guard.as_mut() {
                 set.insert(proof.tx_hash.clone());
+                set.insert(composite_extrinsic_key);
             }
         }
 
@@ -508,7 +622,10 @@ mod tests {
         let verifier = MockOnChainVerifier::new();
         verifier.register_transaction(OnChainPaymentDetails {
             tx_hash: tx_hash.clone(),
+            block_hash: "0x1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
             block_number: 104523,
+            extrinsic_index: 2,
             sender: buyer,
             recipient: merchant,
             amount: 1_000_000_000_000_000,
@@ -527,6 +644,50 @@ mod tests {
     }
 
     #[test]
+    fn test_sender_mismatch_fail() {
+        X402BazaarGateway::clear_cache();
+        let merchant = mock_account(10);
+        let claimed_payer = mock_account(20);
+        let real_sender = mock_account(99);
+        let gateway = X402BazaarGateway::new(merchant, 500_000, "DOT");
+
+        let challenge = gateway.generate_challenge(None, 60_000);
+        let tx_hash =
+            "0xbaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+
+        let verifier = MockOnChainVerifier::new();
+        verifier.register_transaction(OnChainPaymentDetails {
+            tx_hash: tx_hash.clone(),
+            block_hash: "0x1111111111111111111111111111111111111111111111111111111111111111"
+                .to_string(),
+            block_number: 104524,
+            extrinsic_index: 1,
+            sender: real_sender, // Real sender does NOT match claimed payer!
+            recipient: merchant,
+            amount: 500_000,
+            asset: "DOT".to_string(),
+            finalized: true,
+        });
+
+        let proof = X402Proof {
+            challenge_id: challenge.challenge_id.clone(),
+            tx_hash,
+            payer_address: claimed_payer,
+        };
+
+        let err = gateway
+            .verify_payment(&challenge, &proof, &verifier)
+            .unwrap_err();
+        match err {
+            X402Error::SenderMismatch { expected, actual } => {
+                assert_eq!(expected, claimed_payer.to_string());
+                assert_eq!(actual, real_sender.to_string());
+            }
+            other => panic!("Expected SenderMismatch, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_recipient_mismatch_fail() {
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
@@ -541,7 +702,10 @@ mod tests {
         let verifier = MockOnChainVerifier::new();
         verifier.register_transaction(OnChainPaymentDetails {
             tx_hash: tx_hash.clone(),
+            block_hash: "0x2222222222222222222222222222222222222222222222222222222222222222"
+                .to_string(),
             block_number: 104524,
+            extrinsic_index: 3,
             sender: buyer,
             recipient: impostor, // Mismatched recipient
             amount: 500_000,
@@ -578,7 +742,10 @@ mod tests {
         let verifier = MockOnChainVerifier::new();
         verifier.register_transaction(OnChainPaymentDetails {
             tx_hash: tx_hash.clone(),
+            block_hash: "0x3333333333333333333333333333333333333333333333333333333333333333"
+                .to_string(),
             block_number: 104525,
+            extrinsic_index: 1,
             sender: buyer,
             recipient: merchant,
             amount: 500_000, // Insufficient! Expected 1_000_000
@@ -618,7 +785,10 @@ mod tests {
         let verifier = MockOnChainVerifier::new();
         verifier.register_transaction(OnChainPaymentDetails {
             tx_hash: tx_hash.clone(),
+            block_hash: "0x4444444444444444444444444444444444444444444444444444444444444444"
+                .to_string(),
             block_number: 104526,
+            extrinsic_index: 1,
             sender: buyer,
             recipient: merchant,
             amount: 1_000_000,
@@ -652,7 +822,10 @@ mod tests {
         let verifier = MockOnChainVerifier::new();
         verifier.register_transaction(OnChainPaymentDetails {
             tx_hash: tx_hash.clone(),
+            block_hash: "0x5555555555555555555555555555555555555555555555555555555555555555"
+                .to_string(),
             block_number: 104527,
+            extrinsic_index: 1,
             sender: buyer,
             recipient: merchant,
             amount: 1_000_000,
@@ -674,6 +847,74 @@ mod tests {
         // Replay of same challenge or tx must fail
         let replay_err = gateway
             .verify_payment(&challenge, &proof, &verifier)
+            .unwrap_err();
+        assert_eq!(replay_err, X402Error::ReplayDetected);
+    }
+
+    #[test]
+    fn test_composite_extrinsic_replay_fail() {
+        X402BazaarGateway::clear_cache();
+        let merchant = mock_account(10);
+        let buyer = mock_account(20);
+        let gateway = X402BazaarGateway::new(merchant, 1_000_000, "DOT");
+
+        let challenge1 = gateway.generate_challenge(None, 60_000);
+        let tx_hash1 =
+            "0x1111111111111111111111111111111111111111111111111111111111111111".to_string();
+
+        let verifier = MockOnChainVerifier::new();
+        verifier.register_transaction(OnChainPaymentDetails {
+            tx_hash: tx_hash1.clone(),
+            block_hash: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+                .to_string(),
+            block_number: 5000,
+            extrinsic_index: 4,
+            sender: buyer,
+            recipient: merchant,
+            amount: 1_000_000,
+            asset: "DOT".to_string(),
+            finalized: true,
+        });
+
+        let proof1 = X402Proof {
+            challenge_id: challenge1.challenge_id.clone(),
+            tx_hash: tx_hash1,
+            payer_address: buyer,
+        };
+
+        // Payment 1 succeeds
+        assert!(gateway
+            .verify_payment(&challenge1, &proof1, &verifier)
+            .is_ok());
+
+        // Attacker creates a fresh challenge2 with a DIFFERENT tx_hash2,
+        // but pointing to the EXACT SAME block_hash and extrinsic_index
+        let challenge2 = gateway.generate_challenge(None, 60_000);
+        let tx_hash2 =
+            "0x2222222222222222222222222222222222222222222222222222222222222222".to_string();
+
+        verifier.register_transaction(OnChainPaymentDetails {
+            tx_hash: tx_hash2.clone(),
+            block_hash: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+                .to_string(), // SAME block
+            block_number: 5000,
+            extrinsic_index: 4, // SAME extrinsic index!
+            sender: buyer,
+            recipient: merchant,
+            amount: 1_000_000,
+            asset: "DOT".to_string(),
+            finalized: true,
+        });
+
+        let proof2 = X402Proof {
+            challenge_id: challenge2.challenge_id.clone(),
+            tx_hash: tx_hash2,
+            payer_address: buyer,
+        };
+
+        // Must be rejected by composite replay protection!
+        let replay_err = gateway
+            .verify_payment(&challenge2, &proof2, &verifier)
             .unwrap_err();
         assert_eq!(replay_err, X402Error::ReplayDetected);
     }
@@ -725,7 +966,9 @@ mod tests {
         // Block 200 > Finalized head 190
         let res = subxt.register_finalized_transfer(
             "0x1111111111111111111111111111111111111111111111111111111111111111",
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             200,
+            1,
             190,
             &scale_bytes,
             "DOT",
@@ -755,9 +998,17 @@ mod tests {
         }
         .encode();
 
-        // Register with block 185 <= finalized 190
+        // Register with block 185 <= finalized 190, extrinsic index 2
         subxt
-            .register_finalized_transfer(&tx_hash, 185, 190, &scale_bytes, "DOT")
+            .register_finalized_transfer(
+                &tx_hash,
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                185,
+                2,
+                190,
+                &scale_bytes,
+                "DOT",
+            )
             .unwrap();
 
         let proof = X402Proof {
@@ -818,7 +1069,15 @@ mod tests {
         .encode();
 
         subxt
-            .register_finalized_asset_transfer(&tx_hash, 300, 310, &scale_bytes, "QDOT")
+            .register_finalized_asset_transfer(
+                &tx_hash,
+                "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                300,
+                3,
+                310,
+                &scale_bytes,
+                "QDOT",
+            )
             .unwrap();
 
         let proof = X402Proof {
@@ -858,7 +1117,15 @@ mod tests {
         .encode();
 
         verifier
-            .register_finalized_transfer(&tx_hash, 100, 105, &scale_bytes, "DOT")
+            .register_finalized_transfer(
+                &tx_hash,
+                "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                100,
+                1,
+                105,
+                &scale_bytes,
+                "DOT",
+            )
             .unwrap();
 
         let proof = X402Proof {
