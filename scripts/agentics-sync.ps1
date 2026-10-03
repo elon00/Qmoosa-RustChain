@@ -6,20 +6,22 @@ Set-Location $Root
 Write-Host "== Qmoosa-RustChain AI Agentics Single-Click Sync ==" -ForegroundColor Cyan
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) { throw "cargo is required" }
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw "git is required" }
+if (-not (Get-Command tar -ErrorAction SilentlyContinue)) { throw "tar is required" }
 
 $CacheRoot = Join-Path $Root ".agent-cache"
 $Cache = Join-Path $CacheRoot "product-sdk"
+$Archive = Join-Path $CacheRoot "product-sdk-main.tar.gz"
 New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null
 
-if (Test-Path (Join-Path $Cache ".git")) {
-    Write-Host "[1/6] Refreshing official paritytech/product-sdk skills..."
-    git -c "http.https://github.com/.extraheader=" -C $Cache fetch --depth 1 origin
-    git -C $Cache reset --hard origin/HEAD
-} else {
-    Write-Host "[1/6] Cloning official paritytech/product-sdk skills..."
-    git -c "http.https://github.com/.extraheader=" clone --depth 1 https://github.com/paritytech/product-sdk.git $Cache
-}
+Write-Host "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
+if (Test-Path $Cache) { Remove-Item -Recurse -Force $Cache }
+if (Test-Path $Archive) { Remove-Item -Force $Archive }
+New-Item -ItemType Directory -Force -Path $Cache | Out-Null
+
+Invoke-WebRequest -Uri "https://github.com/paritytech/product-sdk/archive/refs/heads/main.tar.gz" -OutFile $Archive
+tar -xzf $Archive --strip-components=1 -C $Cache
+Remove-Item -Force $Archive
+
 if (-not (Test-Path (Join-Path $Cache "skills"))) { throw "Product SDK skills directory not found" }
 
 Write-Host "[2/6] Verifying required AI resource manifest..."
