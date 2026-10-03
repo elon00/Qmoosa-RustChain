@@ -40,8 +40,9 @@ HTTP Request (with X-Block-Hash & payment proof)
                                             └─► Header Height Extraction (true finalized block number)
                                                   └─► Decoded Event Extraction (Balances::Transfer / pallet_assets::Transferred)
                                                         ├── Payer ↔ Sender Identity Equality Check (proof.payer == onchain.sender)
+                                                        ├── Deterministic Asset Hub Mapping (asset_id 1984 <=> QDOT)
                                                         ├── Recipient & Amount Boundary Matching
-                                                        └── Composite Anti-Replay Guard (block_hash:extrinsic_index)
+                                                        └── Persistent Anti-Replay Journal (file-backed disk store)
                                                               └─► Resource Unlocked
 ```
 
@@ -97,7 +98,7 @@ cargo fmt --all -- --check
 # 2. Strict static analysis (zero warnings allowed)
 cargo clippy --workspace --all-targets -- -D warnings
 
-# 3. Workspace unit and integration tests (57 tests passed)
+# 3. Workspace unit and integration tests (59 tests passed)
 cargo test --workspace
 ```
 
@@ -109,12 +110,12 @@ cargo test --workspace
 | `qmoosa-pqc` | NIST FIPS 204 ML-DSA-65 | 6 | 3309-byte lattice signatures, tampered payload, wrong pubkey, corrupted sig, replay, expiration |
 | `qmoosa-qdot-token` | PolkaVM QDOT Token | 5 | Mint/Burn, Pause, Access Control, PolkaVM message dispatch & events |
 | `qmoosa-launchpad` | Presale & Vesting | 5 | Token purchase, time-locked claim, fee routing, PolkaVM message dispatch |
-| `qmoosa-x402` | Subxt On-Chain Verifier | 17 | Subxt event decoders (Balances::Transfer, Assets::Transferred), live finalized head query, canonical chain anchoring, exact extrinsic hash match, phase filtering, true header height, payer-sender equality, composite replay guard |
+| `qmoosa-x402` | Subxt On-Chain Verifier | 19 | Subxt event decoders (Balances::Transfer, Assets::Transferred), live finalized head query, canonical chain anchoring, exact extrinsic hash match, phase filtering, true header height, payer-sender equality, deterministic asset mapping (1984 <=> QDOT), persistent anti-replay journal |
 | `qmoosa-x402-settlement` | On-Chain Settlement Registry | 4 | Micro-settlement, fee splits, replay protection, PolkaVM message dispatch |
 | `qmoosa-agent-core` | Polkadot Agent Kit & MCP | 14 | Intent routing, Agent Kit tool registry, native/asset/XCM tool calls, external MCP client interop suite |
 | `qmoosa-api` | Production API & Gateway | 5 | Health introspection, 402 challenge flow, Subxt verifier authorization, MCP JSON-RPC, tool listing |
 | `qmoosa-conway` | Cellular Automaton Triggers | 2 | Glider simulation, epoch milestone event dispatch |
-| **Total** | **Full Workspace** | **57** | **100% Passed (0 Failures, 1 Optional Testnet Skipped)** |
+| **Total** | **Full Workspace** | **59** | **100% Passed (0 Failures, 1 Optional Testnet Skipped)** |
 
 ---
 

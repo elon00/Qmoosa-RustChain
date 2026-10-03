@@ -137,16 +137,36 @@ pub struct SubxtOnChainVerifier {
     pub expected_network: String,
     pub client: Option<OnlineClient<PolkadotConfig>>,
     pub verified_events: Arc<Mutex<HashMap<String, OnChainPaymentDetails>>>,
+    pub asset_registry: Arc<Mutex<HashMap<u32, String>>>,
 }
 
 impl SubxtOnChainVerifier {
     pub fn new(rpc_url: &str, expected_network: &str) -> Self {
+        let mut asset_registry = HashMap::new();
+        asset_registry.insert(1984, "QDOT".to_string());
+
         Self {
             rpc_url: rpc_url.to_string(),
             expected_network: expected_network.to_string(),
             client: None,
             verified_events: Arc::new(Mutex::new(HashMap::new())),
+            asset_registry: Arc::new(Mutex::new(asset_registry)),
         }
+    }
+
+    /// Registers a deterministic mapping between a Substrate Asset Hub asset_id and its human-readable symbol
+    pub fn register_asset_mapping(&self, asset_id: u32, symbol: &str) {
+        let mut guard = self.asset_registry.lock().unwrap();
+        guard.insert(asset_id, symbol.to_string());
+    }
+
+    /// Resolves an on-chain Asset ID to its registered symbol or defaults to "Asset-{id}"
+    pub fn resolve_asset_symbol(&self, asset_id: u32) -> String {
+        let guard = self.asset_registry.lock().unwrap();
+        guard
+            .get(&asset_id)
+            .cloned()
+            .unwrap_or_else(|| format!("Asset-{}", asset_id))
     }
 
     /// Attaches an existing connected Subxt client
@@ -475,7 +495,7 @@ impl SubxtOnChainVerifier {
                 sender: transfer.from,
                 recipient: transfer.to,
                 amount: transfer.amount,
-                asset: format!("Asset-{}", transfer.asset_id),
+                asset: self.resolve_asset_symbol(transfer.asset_id),
                 finalized: true,
             },
         };
@@ -610,8 +630,8 @@ impl X402BazaarGateway {
             });
         }
 
-        // 9. Asset check
-        if onchain.asset != challenge.asset {
+        // 9. Asset check (supporting deterministic symbol and Asset-{id} mapping)
+        if !Self::is_matching_asset(&challenge.asset, &onchain.asset) {
             return Err(X402Error::AssetMismatch {
                 expected: challenge.asset.clone(),
                 actual: onchain.asset,
@@ -636,11 +656,87 @@ impl X402BazaarGateway {
             let mut t_guard = SETTLED_TX_HASHES.lock().unwrap();
             if let Some(set) = t_guard.as_mut() {
                 set.insert(proof.tx_hash.clone());
-                set.insert(composite_extrinsic_key);
+                set.insert(composite_extrinsic_key.clone());
             }
+
+            let journal_path = std::env::var("X402_REPLAY_JOURNAL").ok();
+            Self::persist_settlement_record(
+                &proof.challenge_id,
+                &proof.tx_hash,
+                &composite_extrinsic_key,
+                journal_path.as_deref(),
+            );
         }
 
         Ok(onchain)
+    }
+
+    /// Verifies asset symbol match with support for Asset-{id} and QDOT aliases
+    pub fn is_matching_asset(challenge_asset: &str, onchain_asset: &str) -> bool {
+        if challenge_asset.eq_ignore_ascii_case(onchain_asset) {
+            return true;
+        }
+        if (challenge_asset.eq_ignore_ascii_case("QDOT")
+            && onchain_asset.eq_ignore_ascii_case("Asset-1984"))
+            || (challenge_asset.eq_ignore_ascii_case("Asset-1984")
+                && onchain_asset.eq_ignore_ascii_case("QDOT"))
+        {
+            return true;
+        }
+        false
+    }
+
+    /// Appends settled payment identifiers to persistent disk journal
+    pub fn persist_settlement_record(
+        challenge_id: &str,
+        tx_hash: &str,
+        composite_key: &str,
+        journal_path: Option<&str>,
+    ) {
+        if let Some(path) = journal_path {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let entry = serde_json::json!({
+                    "timestamp": chrono::Utc::now().timestamp_millis(),
+                    "challenge_id": challenge_id,
+                    "tx_hash": tx_hash,
+                    "composite_key": composite_key,
+                });
+                let _ = writeln!(file, "{}", entry);
+            }
+        }
+    }
+
+    /// Restores settled challenges and tx hashes from a persistent disk journal into memory on startup
+    pub fn restore_persisted_settlements(journal_path: &str) -> usize {
+        let mut count = 0;
+        if let Ok(content) = std::fs::read_to_string(journal_path) {
+            let mut c_guard = SETTLED_CHALLENGES.lock().unwrap();
+            let c_set = c_guard.get_or_insert_with(HashSet::new);
+
+            let mut t_guard = SETTLED_TX_HASHES.lock().unwrap();
+            let t_set = t_guard.get_or_insert_with(HashSet::new);
+
+            for line in content.lines() {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+                    if let Some(cid) = val.get("challenge_id").and_then(|v| v.as_str()) {
+                        c_set.insert(cid.to_string());
+                    }
+                    if let Some(tx) = val.get("tx_hash").and_then(|v| v.as_str()) {
+                        t_set.insert(tx.to_string());
+                    }
+                    if let Some(comp) = val.get("composite_key").and_then(|v| v.as_str()) {
+                        t_set.insert(comp.to_string());
+                    }
+                    count += 1;
+                }
+            }
+        }
+        count
     }
 
     pub fn clear_cache() {
@@ -659,12 +755,15 @@ impl X402BazaarGateway {
 mod tests {
     use super::*;
 
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
     fn mock_account(id: u8) -> AccountId32 {
         AccountId32::new([id; 32])
     }
 
     #[test]
     fn test_valid_onchain_verification_pass() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -700,6 +799,7 @@ mod tests {
 
     #[test]
     fn test_sender_mismatch_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let claimed_payer = mock_account(20);
@@ -744,6 +844,7 @@ mod tests {
 
     #[test]
     fn test_recipient_mismatch_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let impostor = mock_account(99);
@@ -785,6 +886,7 @@ mod tests {
 
     #[test]
     fn test_insufficient_payment_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -828,6 +930,7 @@ mod tests {
 
     #[test]
     fn test_unfinalized_transaction_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -865,6 +968,7 @@ mod tests {
 
     #[test]
     fn test_replay_attack_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -908,6 +1012,7 @@ mod tests {
 
     #[test]
     fn test_composite_extrinsic_replay_fail() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -1065,6 +1170,7 @@ mod tests {
 
     #[test]
     fn test_subxt_end_to_end_payment_unlock() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -1134,6 +1240,7 @@ mod tests {
 
     #[test]
     fn test_subxt_asset_hub_payment_unlock() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(10);
         let buyer = mock_account(20);
@@ -1183,6 +1290,7 @@ mod tests {
 
     #[test]
     fn test_subxt_onchain_verifier_arc_dispatch() {
+        let _lock = TEST_MUTEX.lock().unwrap();
         X402BazaarGateway::clear_cache();
         let merchant = mock_account(30);
         let buyer = mock_account(40);
@@ -1228,6 +1336,78 @@ mod tests {
         assert_eq!(payment_details.sender, buyer);
         assert_eq!(payment_details.recipient, merchant);
         assert!(payment_details.finalized);
+    }
+
+    #[test]
+    fn test_asset_mapping_resolution_and_alias_matching() {
+        let verifier = SubxtOnChainVerifier::new(
+            "wss://polkadot-asset-hub-rpc.polkadot.io",
+            "polkadot-asset-hub",
+        );
+        // Default mapping 1984 -> QDOT
+        assert_eq!(verifier.resolve_asset_symbol(1984), "QDOT");
+        // Unknown defaults to Asset-{id}
+        assert_eq!(verifier.resolve_asset_symbol(9999), "Asset-9999");
+
+        // Custom mapping
+        verifier.register_asset_mapping(1337, "USDT");
+        assert_eq!(verifier.resolve_asset_symbol(1337), "USDT");
+
+        // Alias matching in Gateway
+        assert!(X402BazaarGateway::is_matching_asset("QDOT", "QDOT"));
+        assert!(X402BazaarGateway::is_matching_asset("QDOT", "Asset-1984"));
+        assert!(X402BazaarGateway::is_matching_asset("Asset-1984", "QDOT"));
+        assert!(!X402BazaarGateway::is_matching_asset("QDOT", "DOT"));
+    }
+
+    #[test]
+    fn test_persistent_replay_journal() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        let temp_journal = std::env::temp_dir().join(format!(
+            "qmoosa_test_journal_{}.jsonl",
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        let path_str = temp_journal.to_str().unwrap();
+
+        let cid = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let tx = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let composite = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc:1";
+
+        X402BazaarGateway::persist_settlement_record(cid, tx, composite, Some(path_str));
+
+        // Clear memory cache to simulate API reboot
+        X402BazaarGateway::clear_cache();
+
+        // Restore from disk
+        let count = X402BazaarGateway::restore_persisted_settlements(path_str);
+        assert_eq!(count, 1);
+
+        // Verify that memory cache now rejects replaying this challenge
+        let merchant = mock_account(10);
+        let buyer = mock_account(20);
+        let gateway = X402BazaarGateway::new(merchant, 1_000, "DOT");
+        let challenge = X402Challenge {
+            status_code: 402,
+            challenge_id: cid.to_string(),
+            pay_to_address: merchant,
+            amount: 1_000,
+            asset: "DOT".to_string(),
+            network: "polkadot-asset-hub".to_string(),
+            expires_at: chrono::Utc::now().timestamp_millis() + 60_000,
+        };
+        let proof = X402Proof {
+            challenge_id: cid.to_string(),
+            tx_hash: tx.to_string(),
+            payer_address: buyer,
+        };
+        let verifier = MockOnChainVerifier::new();
+        let err = gateway
+            .verify_payment(&challenge, &proof, &verifier)
+            .unwrap_err();
+        assert_eq!(err, X402Error::ReplayDetected);
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(temp_journal);
     }
 
     #[tokio::test]
