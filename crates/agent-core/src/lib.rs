@@ -246,7 +246,6 @@ impl AgentTool for PolkadotXcmTransferTool {
     }
 }
 
-
 pub struct PolkadotAiResourcesTool;
 
 impl AgentTool for PolkadotAiResourcesTool {
