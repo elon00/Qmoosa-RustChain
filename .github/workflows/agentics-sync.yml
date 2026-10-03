@@ -1,0 +1,40 @@
+name: Polkadot AI Agentics Sync
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "agentics/**"
+      - "crates/agent-core/**"
+      - "services/api/**"
+      - "scripts/agentics-sync.*"
+      - ".github/copilot-instructions.md"
+      - ".github/workflows/agentics-sync.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "agentics/**"
+      - "crates/agent-core/**"
+      - "services/api/**"
+      - "scripts/agentics-sync.*"
+      - ".github/copilot-instructions.md"
+      - ".github/workflows/agentics-sync.yml"
+  workflow_dispatch:
+
+jobs:
+  agentics:
+    name: Sync Official Polkadot AI Resources & Verify Toolkit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Qmoosa-RustChain
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Run single-click agentics mission
+        run: bash scripts/agentics-sync.sh
