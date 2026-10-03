@@ -26,16 +26,31 @@ Contracts in `contracts/` are structured for Polkadot's next-generation **PolkaV
 > [!NOTE]
 > **Security Clarification**: Rust guarantees memory safety, absence of null-pointer dereferences, and data-race freedom at compile time. However, smart contract logical risks (such as cross-contract reentrancy flows, economic exploits, and authorization flaws) are defended through explicit state-ordering checks, checks-effects-interactions patterns, and anti-replay registries.
 
-### 4. x402 Bazaar Protocol (On-Chain Settlement Verification)
-The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline:
+### 4. x402 Bazaar Protocol (On-Chain Subxt Settlement Verification)
+The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline using `subxt v0.51`:
 ```text
 HTTP Request
   └─► 402 Payment Required (Challenge ID + SS58 Merchant + Amount)
         └─► On-Chain Polkadot Transaction
-              └─► RPC Verification (Tx Hash -> Block Inclusion -> Recipient Match -> Asset Match -> Finality)
-                    └─► Anti-Replay Check (Challenge + Tx Hash)
-                          └─► Resource Unlocked
+              └─► Subxt Live WebSocket RPC Inspection
+                    └─► Finalized Block Check -> SCALE Event Decoders
+                          ├── Balances::Transfer (Native DOT)
+                          └── pallet_assets::Transferred (Asset Hub Fungible Assets)
+                                └─► Recipient & Amount Matching
+                                      └─► Anti-Replay Cache Verification
+                                            └─► Resource Unlocked
 ```
+
+### 5. Polkadot Agent Kit & Model Context Protocol (MCP)
+`crates/agent-core` implements an autonomous **Polkadot Agent Kit** action registry exposed directly over the standard **Model Context Protocol (MCP)**:
+- **Zero Private Key Exposure**: Agents only formulate structured proposals and action descriptions; signing authority remains strictly with the user's host wallet.
+- **Agent Kit Tool Suite**:
+  - `polkadot_transfer_native`: Native DOT token transfer proposals.
+  - `polkadot_transfer_asset`: Asset Hub fungible asset (`pallet_assets`) transfers.
+  - `polkadot_xcm_transfer`: Cross-consensus messaging (XCM) transfers across parachains.
+  - `polkadot_query_balance`: Balance lookup for Substrate `AccountId32` accounts.
+  - `polkadot_sign_pqc_attestation`: NIST FIPS 204 ML-DSA-65 post-quantum signing envelope.
+- **Standard MCP Protocol**: Full JSON-RPC 2.0 interface supporting `initialize`, `tools/list`, and `tools/call` for direct integration with AI assistants (Claude, Cursor, Antigravity).
 
 ---
 
@@ -51,9 +66,9 @@ Qmoosa-RustChain/
 ├── crates/
 │   ├── primitives/             # AccountId32, Substrate SS58 Blake2b Checksum, SCALE Codec
 │   ├── pqc/                    # Genuine NIST FIPS 204 ML-DSA-65 Post-Quantum Attestation
-│   ├── x402/                   # HTTP 402 Bazaar Protocol Gateway & On-Chain RPC Verifier
+│   ├── x402/                   # HTTP 402 Bazaar Protocol Gateway & Subxt v0.51 On-Chain Verifier
 │   ├── conway/                 # B3/S23 Conway Automaton Event-Driven Agent Trigger Engine
-│   └── agent-core/             # Host-Mediated Intent Router (Zero Private Key Exposure)
+│   └── agent-core/             # Polkadot Agent Kit & Model Context Protocol (MCP) Host Engine
 │
 ├── contracts/
 │   ├── qdot-token/             # Flexible / Uncapped Supply Token with Role-Governed Mint & PolkaVM ABI
@@ -61,7 +76,7 @@ Qmoosa-RustChain/
 │   └── x402-settlement/        # On-Chain HTTP 402 Micro-Settlement Registry (1% Network Split)
 │
 └── services/
-    └── api/                    # High-throughput Axum/Tokio Microservice with x402 Gateway
+    └── api/                    # Axum/Tokio Microservice with x402 Gateway & MCP Endpoint
 ```
 
 ---
@@ -77,7 +92,7 @@ cargo fmt --all -- --check
 # 2. Strict static analysis (zero warnings allowed)
 cargo clippy --workspace --all-targets -- -D warnings
 
-# 3. Workspace unit and integration tests (34 tests)
+# 3. Workspace unit and integration tests (45 tests)
 cargo test --workspace
 ```
 
@@ -89,11 +104,11 @@ cargo test --workspace
 | `qmoosa-pqc` | NIST FIPS 204 ML-DSA-65 | 6 | 3309-byte lattice signatures, tampered payload, wrong pubkey, corrupted sig, replay, expiration |
 | `qmoosa-qdot-token` | PolkaVM QDOT Token | 5 | Mint/Burn, Pause, Access Control, PolkaVM message dispatch & events |
 | `qmoosa-launchpad` | Presale & Vesting | 5 | Token purchase, time-locked claim, fee routing, PolkaVM message dispatch |
-| `qmoosa-x402` | Bazaar Gateway & Verification | 5 | On-chain lookup, recipient check, amount check, finality check, anti-replay |
+| `qmoosa-x402` | Bazaar Gateway & Subxt Verifier | 11 | Subxt event decoders (Balances::Transfer, Assets::Transferred), finality, recipient/amount check, anti-replay |
 | `qmoosa-x402-settlement` | On-Chain Settlement Registry | 4 | Micro-settlement, fee splits, replay protection, PolkaVM message dispatch |
-| `qmoosa-agent-core` | Intent & Proposal Safety | 3 | Intent classification, proposal construction, zero key exposure |
+| `qmoosa-agent-core` | Polkadot Agent Kit & MCP | 8 | Intent routing, Agent Kit tool registry, native/asset/XCM tool calls, MCP JSON-RPC protocol |
 | `qmoosa-conway` | Cellular Automaton Triggers | 2 | Glider simulation, epoch milestone event dispatch |
-| **Total** | **Full Workspace** | **34** | **100% Passed (0 Failures)** |
+| **Total** | **Full Workspace** | **45** | **100% Passed (0 Failures)** |
 
 ---
 
@@ -105,10 +120,12 @@ cargo run -p qmoosa-api
 ```
 
 ### Endpoints
-- `GET /health`: Platform health, PQC status, and network parameters.
+- `GET /health`: Platform health, PQC status, Subxt connection, and network parameters.
 - `GET /api/v1/alpha-model`: HTTP 402 protected resource (requires payment proof).
 - `POST /api/pqc/sign`: Generates genuine NIST FIPS 204 ML-DSA-65 envelope.
 - `POST /api/pqc/verify`: Verifies ML-DSA-65 envelope against payload.
+- `GET /api/v1/agent/tools`: Lists all registered Polkadot Agent Kit tools.
+- `POST /mcp`: Standard Model Context Protocol (MCP) JSON-RPC 2.0 endpoint (`initialize`, `tools/list`, `tools/call`).
 
 ---
 

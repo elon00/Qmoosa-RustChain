@@ -4,6 +4,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use qmoosa_agent_core::PolkadotAgentKit;
 use qmoosa_pqc::{PqcProvider, PqcSignatureEnvelope};
 use qmoosa_primitives::{AccountId32, SS58_PREFIX_SUBSTRATE};
 use qmoosa_x402::{MockOnChainVerifier, X402BazaarGateway, X402Challenge, X402Proof};
@@ -15,6 +16,7 @@ struct AppState {
     pqc_provider: PqcProvider,
     onchain_verifier: MockOnChainVerifier,
     active_challenges: Mutex<std::collections::HashMap<String, X402Challenge>>,
+    agent_kit: PolkadotAgentKit,
 }
 
 #[tokio::main]
@@ -36,6 +38,7 @@ async fn main() {
         pqc_provider: PqcProvider::new(),
         onchain_verifier: verifier,
         active_challenges: Mutex::new(std::collections::HashMap::new()),
+        agent_kit: PolkadotAgentKit::new(),
     });
 
     let app = Router::new()
@@ -43,10 +46,13 @@ async fn main() {
         .route("/api/v1/alpha-model", get(protected_alpha_model_handler))
         .route("/api/pqc/sign", post(pqc_sign_handler))
         .route("/api/pqc/verify", post(pqc_verify_handler))
+        .route("/api/v1/agent/tools", get(agent_tools_handler))
+        .route("/mcp", post(mcp_handler))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     println!("🌌 Qmoosa-RustChain API Service listening on http://0.0.0.0:8080");
+    println!("🤖 Polkadot Agent Kit & MCP Server active on /mcp");
     println!("🔑 Merchant Address: {}", merchant_ss58);
     axum::serve(listener, app).await.unwrap();
 }
@@ -174,4 +180,18 @@ async fn pqc_verify_handler(Json(req): Json<VerifyRequest>) -> impl IntoResponse
             Json(json!({ "valid": false, "error": e.to_string() })),
         ),
     }
+}
+
+async fn agent_tools_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+) -> impl IntoResponse {
+    (StatusCode::OK, Json(state.agent_kit.list_tools()))
+}
+
+async fn mcp_handler(
+    axum::extract::State(state): axum::extract::State<Arc<AppState>>,
+    Json(request): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let response = state.agent_kit.handle_mcp_request(&request);
+    (StatusCode::OK, Json(response))
 }
