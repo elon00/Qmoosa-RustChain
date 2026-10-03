@@ -1,11 +1,44 @@
-{
-    "contract_name":  "launchpad",
-    "symbol":  "LAUNCH",
-    "standard":  "PolkaVM pallet-revive ABI v1",
-    "target_architecture":  "RISC-V RV32EM",
-    "code_hash":  "0xeda3d6428d74826ce6cae5d6b600eef3d49fd563f0d7eb0ca3e755e1c3d37403",
-    "functions":  [
-                      "dispatch(AccountId32, Message) -\u003e Result\u003cOption\u003cEvent\u003e, Error\u003e",
-                      "query_state() -\u003e Bytes"
-                  ]
-}
+[
+  {
+    "type": "constructor",
+    "inputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "buyTokens",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bool" }],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "claimTokens",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "bool" }],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getContributed",
+    "inputs": [{ "name": "account", "type": "address" }],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "totalRaised",
+    "inputs": [],
+    "outputs": [{ "name": "", "type": "uint256" }],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "TokensPurchased",
+    "inputs": [
+      { "name": "buyer", "type": "address", "indexed": true },
+      { "name": "amount", "type": "uint256", "indexed": false }
+    ],
+    "anonymous": false
+  }
+]

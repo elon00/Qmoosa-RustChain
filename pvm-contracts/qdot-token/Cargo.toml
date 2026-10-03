@@ -1,0 +1,25 @@
+[package]
+name = "qdot-token-pvm"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+[[bin]]
+name = "qdot_token"
+path = "src/main.rs"
+
+[dependencies]
+pallet-revive-uapi = { version = "0.10", default-features = false }
+polkavm-derive = { version = "0.31.0" }
+
+[build-dependencies]
+cargo-pvm-contract-builder = "0.3.0"
+
+[workspace]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+panic = "abort"
+overflow-checks = false

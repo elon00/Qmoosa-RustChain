@@ -1,44 +1,38 @@
 {
-    "timestamp":  "2026-10-03T18:57:53Z",
+    "timestamp":  "2026-10-03T19:57:13Z",
     "platform":  "Qmoosa-RustChain Web4",
-    "execution_engine":  "PolkaVM (pallet-revive RISC-V)",
+    "execution_engine":  "PolkaVM (pallet-revive RISC-V RV32EM)",
+    "compiler":  "cargo-pvm-contract-builder v0.3.0 / polkavm-linker v0.31.0",
+    "target_network":  "Polkadot Hub TestNet (Westend / Paseo Asset Hub)",
     "rpc_endpoint":  "wss://westend-asset-hub-rpc.polkadot.io:443",
+    "deployment_phase":  "Phase-2 PolkaVM Artifacts Compiled",
     "contracts":  [
                       {
                           "contract":  "qdot_token",
-                          "type":  "Token",
-                          "code_hash":  "0x2a71621fdc241623a8bb5833d40449040d8d836d042e51260436cfd7d9997b8a",
-                          "contract_address_substrate":  "0x1d1ae9aea1eaa194fb914bd5ae98c2932e685cdfaa1b7d368d0163f2938549e6",
-                          "evm_mapped_address":  "0x1d1ae9aea1eaa194fb914bd5ae98c2932e685cdf",
+                          "type":  "Token (ERC-20 equivalent)",
+                          "code_hash":  "0x632ea26bc3b2b9a9d9c12dc11f3f6113eeefac149d393a9091e9bb9150678d52",
+                          "binary_size_bytes":  3014,
                           "artifact_polkavm":  "artifacts/qdot_token.polkavm",
                           "artifact_abi":  "artifacts/qdot_token.abi.json",
-                          "network":  "Polkadot Hub TestNet (Westend / Paseo Asset Hub)",
-                          "status":  "Deployed and Verified",
-                          "explorer_url":  "https://westend.subscan.io/account/0x1d1ae9aea1eaa194fb914bd5ae98c2932e685cdfaa1b7d368d0163f2938549e6"
+                          "deployment_status":  "Compiled \u0026 Code Hash Verified (On-Chain Deployment Pending Signer)"
                       },
                       {
                           "contract":  "launchpad",
-                          "type":  "Presale",
-                          "code_hash":  "0xeda3d6428d74826ce6cae5d6b600eef3d49fd563f0d7eb0ca3e755e1c3d37403",
-                          "contract_address_substrate":  "0x2ad5866d6780354b769fb5adf04a17fa3ff9dcafc4e306bb9a77be432537952f",
-                          "evm_mapped_address":  "0x2ad5866d6780354b769fb5adf04a17fa3ff9dcaf",
+                          "type":  "Launchpad Presale",
+                          "code_hash":  "0x794bbe888075d3db77d26bcbd2b103334b6f84f5b867486c5eb8f882dc1429dd",
+                          "binary_size_bytes":  2411,
                           "artifact_polkavm":  "artifacts/launchpad.polkavm",
                           "artifact_abi":  "artifacts/launchpad.abi.json",
-                          "network":  "Polkadot Hub TestNet (Westend / Paseo Asset Hub)",
-                          "status":  "Deployed and Verified",
-                          "explorer_url":  "https://westend.subscan.io/account/0x2ad5866d6780354b769fb5adf04a17fa3ff9dcafc4e306bb9a77be432537952f"
+                          "deployment_status":  "Compiled \u0026 Code Hash Verified (On-Chain Deployment Pending Signer)"
                       },
                       {
                           "contract":  "x402_settlement",
-                          "type":  "Settlement",
-                          "code_hash":  "0x3dcd4264e64a9ce8c17972a287075c6948cf5b28b38992a686c6b8e3e6ec724b",
-                          "contract_address_substrate":  "0x621b5d6eedd0358b17fbdc4377b4f08520afc84ed256d9d130a1b041ea44736f",
-                          "evm_mapped_address":  "0x621b5d6eedd0358b17fbdc4377b4f08520afc84e",
+                          "type":  "x402 Micro-Settlement",
+                          "code_hash":  "0xf9f39f3238f7433266e3439af298b1e83b189da610d035149390ff4753a7bf41",
+                          "binary_size_bytes":  2567,
                           "artifact_polkavm":  "artifacts/x402_settlement.polkavm",
                           "artifact_abi":  "artifacts/x402_settlement.abi.json",
-                          "network":  "Polkadot Hub TestNet (Westend / Paseo Asset Hub)",
-                          "status":  "Deployed and Verified",
-                          "explorer_url":  "https://westend.subscan.io/account/0x621b5d6eedd0358b17fbdc4377b4f08520afc84ed256d9d130a1b041ea44736f"
+                          "deployment_status":  "Compiled \u0026 Code Hash Verified (On-Chain Deployment Pending Signer)"
                       }
                   ]
 }
