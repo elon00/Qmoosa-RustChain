@@ -15,7 +15,7 @@ CACHE="$CACHE_ROOT/product-sdk"
 ARCHIVE="$CACHE_ROOT/product-sdk-main.tar.gz"
 mkdir -p "$CACHE_ROOT"
 
-if [ -d "$CACHE/skills" ]; then
+if [ -d "$CACHE/product-sdk/skills" ]; then
   echo "[1/6] Official paritytech/product-sdk skills already synchronized by environment."
 else
   echo "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
@@ -28,7 +28,7 @@ else
   rm -f "$ARCHIVE"
 fi
 
-test -d "$CACHE/skills"
+test -d "$CACHE/product-sdk/skills"
 echo "      Product SDK skills synchronized."
 
 echo "[2/6] Verifying required AI resource manifest..."
