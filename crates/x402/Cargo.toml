@@ -13,3 +13,4 @@ chrono.workspace = true
 thiserror.workspace = true
 parity-scale-codec.workspace = true
 qmoosa-primitives = { path = "../primitives" }
+subxt = "0.51.1"

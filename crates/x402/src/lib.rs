@@ -3,6 +3,7 @@ use qmoosa_primitives::AccountId32;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
+use subxt::{OnlineClient, PolkadotConfig};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq, Eq, Encode, Decode)]
@@ -27,6 +28,8 @@ pub enum X402Error {
     InsufficientPayment { expected: u128, actual: u128 },
     #[error("Failed to decode SCALE event payload: {0}")]
     ScaleDecodeError(String),
+    #[error("Subxt live RPC error: {0}")]
+    SubxtRpcError(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,7 +100,7 @@ impl OnChainTransactionVerifier for MockOnChainVerifier {
     }
 }
 
-/// Substrate Balances::Transfer event structure encoded with SCALE
+/// Substrate Balances::Transfer event structure encoded with SCALE (native token)
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
 pub struct SubstrateBalancesTransferEvent {
     pub from: AccountId32,
@@ -105,8 +108,24 @@ pub struct SubstrateBalancesTransferEvent {
     pub amount: u128,
 }
 
+/// Substrate Assets::Transferred event structure encoded with SCALE (Asset Hub fungible assets like QDOT)
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode, Serialize, Deserialize)]
+pub struct SubstrateAssetsTransferredEvent {
+    pub asset_id: u32,
+    pub from: AccountId32,
+    pub to: AccountId32,
+    pub amount: u128,
+}
+
+/// Unified on-chain transfer evidence decoded from Substrate blocks
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubstrateTransferEvidence {
+    NativeTransfer(SubstrateBalancesTransferEvent),
+    AssetTransfer(SubstrateAssetsTransferredEvent),
+}
+
 /// Concrete Subxt / Substrate RPC on-chain verifier.
-/// Connects to Substrate RPC, decodes SCALE event streams (Balances::Transfer),
+/// Connects to Substrate RPC, decodes SCALE event streams (Balances::Transfer & Assets::Transferred),
 /// and enforces GRANDPA/BEEFY block finality checks.
 pub struct SubxtOnChainVerifier {
     pub rpc_url: String,
@@ -123,6 +142,13 @@ impl SubxtOnChainVerifier {
         }
     }
 
+    /// Establishes a live WebSocket connection to a Polkadot / Asset Hub node via the Subxt client
+    pub async fn connect_live(rpc_url: &str) -> Result<OnlineClient<PolkadotConfig>, X402Error> {
+        OnlineClient::<PolkadotConfig>::from_url(rpc_url)
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))
+    }
+
     /// Decodes a raw SCALE-encoded Balances::Transfer event payload from a Substrate block
     pub fn decode_balances_transfer(
         scale_bytes: &[u8],
@@ -130,6 +156,47 @@ impl SubxtOnChainVerifier {
         let mut slice = scale_bytes;
         SubstrateBalancesTransferEvent::decode(&mut slice)
             .map_err(|e| X402Error::ScaleDecodeError(format!("{:?}", e)))
+    }
+
+    /// Decodes a raw SCALE-encoded Assets::Transferred event payload from an Asset Hub block
+    pub fn decode_assets_transferred(
+        scale_bytes: &[u8],
+    ) -> Result<SubstrateAssetsTransferredEvent, X402Error> {
+        let mut slice = scale_bytes;
+        SubstrateAssetsTransferredEvent::decode(&mut slice)
+            .map_err(|e| X402Error::ScaleDecodeError(format!("{:?}", e)))
+    }
+
+    /// Inspects a finalized block's events and extracts both Balances::Transfer and Assets::Transferred events via Subxt
+    pub async fn scan_block_events_live(
+        client: &OnlineClient<PolkadotConfig>,
+        block_hash_bytes: [u8; 32],
+    ) -> Result<Vec<SubstrateTransferEvidence>, X402Error> {
+        let block_hash = subxt::utils::H256::from(block_hash_bytes);
+        let at_block = client
+            .at_block(block_hash)
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+        let events = at_block
+            .events()
+            .fetch()
+            .await
+            .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+
+        let mut evidences = Vec::new();
+        for ev_res in events.iter() {
+            let ev = ev_res.map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
+            if ev.pallet_name() == "Balances" && ev.event_name() == "Transfer" {
+                if let Ok(transfer) = Self::decode_balances_transfer(ev.bytes()) {
+                    evidences.push(SubstrateTransferEvidence::NativeTransfer(transfer));
+                }
+            } else if ev.pallet_name() == "Assets" && ev.event_name() == "Transferred" {
+                if let Ok(asset_transfer) = Self::decode_assets_transferred(ev.bytes()) {
+                    evidences.push(SubstrateTransferEvidence::AssetTransfer(asset_transfer));
+                }
+            }
+        }
+        Ok(evidences)
     }
 
     /// Builds a standard Substrate JSON-RPC 2.0 query payload
@@ -150,7 +217,7 @@ impl SubxtOnChainVerifier {
         Ok(())
     }
 
-    /// Ingests and registers an on-chain Substrate finalized transfer event
+    /// Ingests and registers an on-chain Substrate finalized native transfer event
     pub fn register_finalized_transfer(
         &self,
         tx_hash: &str,
@@ -169,6 +236,33 @@ impl SubxtOnChainVerifier {
             recipient: event.to,
             amount: event.amount,
             asset: asset.to_string(),
+            finalized: true,
+        };
+
+        let mut guard = self.verified_events.lock().unwrap();
+        guard.insert(tx_hash.to_string(), details.clone());
+        Ok(details)
+    }
+
+    /// Ingests and registers an on-chain Substrate finalized fungible asset transfer event (Asset Hub)
+    pub fn register_finalized_asset_transfer(
+        &self,
+        tx_hash: &str,
+        block_number: u64,
+        finalized_head_block: u64,
+        raw_scale_event: &[u8],
+        asset_symbol: &str,
+    ) -> Result<OnChainPaymentDetails, X402Error> {
+        Self::verify_finality(block_number, finalized_head_block)?;
+        let event = Self::decode_assets_transferred(raw_scale_event)?;
+
+        let details = OnChainPaymentDetails {
+            tx_hash: tx_hash.to_string(),
+            block_number,
+            sender: event.from,
+            recipient: event.to,
+            amount: event.amount,
+            asset: asset_symbol.to_string(),
             finalized: true,
         };
 
@@ -606,6 +700,68 @@ mod tests {
         assert_eq!(payment_details.sender, buyer);
         assert_eq!(payment_details.recipient, merchant);
         assert_eq!(payment_details.amount, 50_000_000_000);
+        assert!(payment_details.finalized);
+    }
+
+    #[test]
+    fn test_subxt_decode_assets_transferred_event_pass() {
+        let sender = mock_account(1);
+        let recipient = mock_account(2);
+        let amount = 1_000_000_000_000_000_000u128; // 1 QDOT
+
+        let event = SubstrateAssetsTransferredEvent {
+            asset_id: 1984, // QDOT Asset ID on Asset Hub
+            from: sender,
+            to: recipient,
+            amount,
+        };
+
+        let scale_bytes = event.encode();
+        let decoded = SubxtOnChainVerifier::decode_assets_transferred(&scale_bytes).unwrap();
+        assert_eq!(decoded.asset_id, 1984);
+        assert_eq!(decoded.from, sender);
+        assert_eq!(decoded.to, recipient);
+        assert_eq!(decoded.amount, amount);
+    }
+
+    #[test]
+    fn test_subxt_asset_hub_payment_unlock() {
+        X402BazaarGateway::clear_cache();
+        let merchant = mock_account(10);
+        let buyer = mock_account(20);
+        let gateway = X402BazaarGateway::new(merchant, 5_000_000_000_000_000_000, "QDOT");
+
+        let challenge = gateway.generate_challenge(None, 60_000);
+        let tx_hash =
+            "0x7777777777777777777777777777777777777777777777777777777777777777".to_string();
+
+        let subxt = SubxtOnChainVerifier::new(
+            "wss://polkadot-asset-hub-rpc.polkadot.io",
+            "polkadot-asset-hub",
+        );
+        let scale_bytes = SubstrateAssetsTransferredEvent {
+            asset_id: 1984,
+            from: buyer,
+            to: merchant,
+            amount: 5_000_000_000_000_000_000,
+        }
+        .encode();
+
+        subxt
+            .register_finalized_asset_transfer(&tx_hash, 300, 310, &scale_bytes, "QDOT")
+            .unwrap();
+
+        let proof = X402Proof {
+            challenge_id: challenge.challenge_id.clone(),
+            tx_hash,
+            payer_address: buyer,
+        };
+
+        let payment_details = gateway.verify_payment(&challenge, &proof, &subxt).unwrap();
+        assert_eq!(payment_details.sender, buyer);
+        assert_eq!(payment_details.recipient, merchant);
+        assert_eq!(payment_details.amount, 5_000_000_000_000_000_000);
+        assert_eq!(payment_details.asset, "QDOT");
         assert!(payment_details.finalized);
     }
 }
