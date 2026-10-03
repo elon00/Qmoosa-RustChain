@@ -1,0 +1,11 @@
+{
+    "contract_name":  "launchpad",
+    "symbol":  "LAUNCH",
+    "standard":  "PolkaVM pallet-revive ABI v1",
+    "target_architecture":  "RISC-V RV32EM",
+    "code_hash":  "0xeda3d6428d74826ce6cae5d6b600eef3d49fd563f0d7eb0ca3e755e1c3d37403",
+    "functions":  [
+                      "dispatch(AccountId32, Message) -\u003e Result\u003cOption\u003cEvent\u003e, Error\u003e",
+                      "query_state() -\u003e Bytes"
+                  ]
+}

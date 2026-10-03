@@ -1,0 +1,11 @@
+{
+    "contract_name":  "x402_settlement",
+    "symbol":  "X402",
+    "standard":  "PolkaVM pallet-revive ABI v1",
+    "target_architecture":  "RISC-V RV32EM",
+    "code_hash":  "0x3dcd4264e64a9ce8c17972a287075c6948cf5b28b38992a686c6b8e3e6ec724b",
+    "functions":  [
+                      "dispatch(AccountId32, Message) -\u003e Result\u003cOption\u003cEvent\u003e, Error\u003e",
+                      "query_state() -\u003e Bytes"
+                  ]
+}

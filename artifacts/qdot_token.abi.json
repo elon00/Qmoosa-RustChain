@@ -1,0 +1,11 @@
+{
+    "contract_name":  "qdot_token",
+    "symbol":  "QDOT",
+    "standard":  "PolkaVM pallet-revive ABI v1",
+    "target_architecture":  "RISC-V RV32EM",
+    "code_hash":  "0x2a71621fdc241623a8bb5833d40449040d8d836d042e51260436cfd7d9997b8a",
+    "functions":  [
+                      "dispatch(AccountId32, Message) -\u003e Result\u003cOption\u003cEvent\u003e, Error\u003e",
+                      "query_state() -\u003e Bytes"
+                  ]
+}
