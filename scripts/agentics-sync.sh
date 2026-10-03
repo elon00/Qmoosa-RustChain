@@ -14,11 +14,11 @@ mkdir -p "$ROOT/.agent-cache"
 
 if [ -d "$CACHE/.git" ]; then
   echo "[1/6] Refreshing official paritytech/product-sdk skills..."
-  git -C "$CACHE" fetch --depth 1 origin
+  git -c http.https://github.com/.extraheader= -C "$CACHE" fetch --depth 1 origin
   git -C "$CACHE" reset --hard origin/HEAD
 else
   echo "[1/6] Cloning official paritytech/product-sdk skills..."
-  git clone --depth 1 https://github.com/paritytech/product-sdk.git "$CACHE"
+  git -c http.https://github.com/.extraheader= clone --depth 1 https://github.com/paritytech/product-sdk.git "$CACHE"
 fi
 
 test -d "$CACHE/skills"
