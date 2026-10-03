@@ -5,3 +5,6 @@ Cargo.lock
 .env.local
 .DS_Store
 *.log
+
+# Local cache for synchronized official Polkadot Product SDK skills
+.agent-cache/
