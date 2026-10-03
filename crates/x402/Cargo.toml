@@ -11,3 +11,5 @@ hex.workspace = true
 rand.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+parity-scale-codec.workspace = true
+qmoosa-primitives = { path = "../primitives" }

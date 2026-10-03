@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/primitives",
     "crates/pqc",
     "crates/x402",
     "crates/conway",
@@ -28,3 +29,7 @@ tokio = { version = "1.38", features = ["full"] }
 axum = "0.7"
 thiserror = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
+bs58 = "0.5"
+blake2 = "0.10"
+fips204 = { version = "0.4", features = ["default-rng", "ml-dsa-65"] }

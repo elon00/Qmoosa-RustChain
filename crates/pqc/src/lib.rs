@@ -1,5 +1,7 @@
-use sha3::{Digest, Sha3_256, Sha3_512};
+use fips204::ml_dsa_65;
+use fips204::traits::{KeyGen, SerDes, Signer, Verifier};
 use serde::{Deserialize, Serialize};
+use sha3::{Digest, Sha3_256};
 use std::collections::HashSet;
 use std::sync::Mutex;
 use thiserror::Error;
@@ -34,18 +36,18 @@ pub struct PqcProvider {
 
 static SEEN_NONCES: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
+impl Default for PqcProvider {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PqcProvider {
     pub fn new() -> Self {
-        let mut seed = [0u8; 32];
-        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut seed);
-
-        let mut hasher = Sha3_512::new();
-        hasher.update(&seed);
-        let pub_key = hasher.finalize().to_vec();
-
+        let (pk, sk) = ml_dsa_65::KG::try_keygen().unwrap();
         Self {
-            public_key: pub_key,
-            secret_key: seed.to_vec(),
+            public_key: pk.into_bytes().to_vec(),
+            secret_key: sk.into_bytes().to_vec(),
         }
     }
 
@@ -68,10 +70,10 @@ impl PqcProvider {
         // Sign target binds: digest, timestamp, expires_at, and nonce
         let sign_target = format!("{}:{}:{}:{}", payload_digest, now, expires_at, nonce);
 
-        let mut sig_hasher = Sha3_512::new();
-        sig_hasher.update(&self.secret_key);
-        sig_hasher.update(sign_target.as_bytes());
-        let signature_bytes = sig_hasher.finalize();
+        let sk_array: [u8; 4032] = self.secret_key.as_slice().try_into().unwrap();
+        let sk = ml_dsa_65::PrivateKey::try_from_bytes(sk_array).unwrap();
+        let sig = sk.try_sign(sign_target.as_bytes(), b"").unwrap();
+        let signature_bytes = sig.to_vec();
 
         PqcSignatureEnvelope {
             algorithm: "NIST-FIPS-204-ML-DSA-65".to_string(),
@@ -84,7 +86,11 @@ impl PqcProvider {
         }
     }
 
-    pub fn verify_envelope(payload: &str, envelope: &PqcSignatureEnvelope, check_replay: bool) -> Result<(), PqcError> {
+    pub fn verify_envelope(
+        payload: &str,
+        envelope: &PqcSignatureEnvelope,
+        check_replay: bool,
+    ) -> Result<(), PqcError> {
         let now = chrono::Utc::now().timestamp_millis();
 
         // 1. Check expiration
@@ -111,8 +117,28 @@ impl PqcProvider {
             return Err(PqcError::DigestMismatch);
         }
 
-        // 4. Verify signature validity
-        if envelope.signature_hex.len() != 128 || envelope.public_key_hex.len() != 128 {
+        // 4. Genuine NIST FIPS 204 ML-DSA-65 cryptographic verification
+        let pk_bytes =
+            hex::decode(&envelope.public_key_hex).map_err(|_| PqcError::InvalidSignature)?;
+        let pk_array: [u8; 1952] = pk_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| PqcError::InvalidSignature)?;
+        let pk = ml_dsa_65::PublicKey::try_from_bytes(pk_array)
+            .map_err(|_| PqcError::InvalidSignature)?;
+
+        let sig_bytes =
+            hex::decode(&envelope.signature_hex).map_err(|_| PqcError::InvalidSignature)?;
+        let sig_array: [u8; 3309] = sig_bytes
+            .as_slice()
+            .try_into()
+            .map_err(|_| PqcError::InvalidSignature)?;
+
+        let sign_target = format!(
+            "{}:{}:{}:{}",
+            envelope.payload_digest, envelope.timestamp, envelope.expires_at, envelope.nonce
+        );
+        if !pk.verify(sign_target.as_bytes(), &sig_array, b"") {
             return Err(PqcError::InvalidSignature);
         }
 
@@ -152,11 +178,27 @@ mod tests {
     }
 
     #[test]
+    fn test_wrong_public_key_fail() {
+        let provider1 = PqcProvider::new();
+        let provider2 = PqcProvider::new();
+        let payload = r#"{"action":"vote","proposal":42}"#;
+        let mut envelope = provider1.sign_payload(payload, 5000);
+        envelope.public_key_hex = provider2.public_key_hex(); // Substitute public key
+        assert_eq!(
+            PqcProvider::verify_envelope(payload, &envelope, false),
+            Err(PqcError::InvalidSignature)
+        );
+    }
+
+    #[test]
     fn test_corrupted_signature_fail() {
         let provider = PqcProvider::new();
         let payload = r#"{"action":"vote","proposal":42}"#;
         let mut envelope = provider.sign_payload(payload, 5000);
-        envelope.signature_hex = "00".to_string(); // Corrupted signature
+        let mut sig_bytes = hex::decode(&envelope.signature_hex).unwrap();
+        // Flip a byte in the 3309-byte ML-DSA-65 signature
+        sig_bytes[10] ^= 0xFF;
+        envelope.signature_hex = hex::encode(sig_bytes);
         assert_eq!(
             PqcProvider::verify_envelope(payload, &envelope, false),
             Err(PqcError::InvalidSignature)

@@ -12,3 +12,4 @@ hex.workspace = true
 rand.workspace = true
 chrono.workspace = true
 thiserror.workspace = true
+fips204 = "0.4.6"

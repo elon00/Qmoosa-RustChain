@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  ci:
+    name: Code Quality, Static Analysis & Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,8 +19,14 @@ jobs:
         with:
           components: clippy, rustfmt
 
-      - name: Format check
+      - name: Format check (rustfmt)
         run: cargo fmt --all -- --check
 
-      - name: Workspace test suite
+      - name: Linter & Static Analysis (clippy)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Workspace Unit & Integration Tests
         run: cargo test --workspace --verbose
+
+      - name: Production Release Build
+        run: cargo build --release --workspace

@@ -1,3 +1,4 @@
+use qmoosa_primitives::AccountId32;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -10,8 +11,8 @@ pub enum ActionType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionProposal {
-    pub target: String,
-    pub value_dot: String,
+    pub target: AccountId32,
+    pub value_plancks: u128,
     pub call_data_hex: String,
 }
 
@@ -26,12 +27,20 @@ pub struct AgentActionProposal {
 
 pub struct AgentOrchestrator {
     pub default_model: String,
+    pub factory_account: AccountId32,
+    pub x402_settlement_account: AccountId32,
 }
 
 impl AgentOrchestrator {
-    pub fn new(default_model: &str) -> Self {
+    pub fn new(
+        default_model: &str,
+        factory_account: AccountId32,
+        x402_settlement_account: AccountId32,
+    ) -> Self {
         Self {
             default_model: default_model.to_string(),
+            factory_account,
+            x402_settlement_account,
         }
     }
 
@@ -43,11 +52,12 @@ impl AgentOrchestrator {
             AgentActionProposal {
                 proposal_id,
                 action_type: ActionType::LaunchToken,
-                summary: "Deploying new Polkadot Native dynamic uncapped token via PolkaVM".to_string(),
+                summary: "Deploying new Polkadot Native dynamic uncapped token via PolkaVM"
+                    .to_string(),
                 requires_wallet_signature: true,
                 tx_proposal: Some(TransactionProposal {
-                    target: "TokenFactoryAddress".to_string(),
-                    value_dot: "0.0".to_string(),
+                    target: self.factory_account,
+                    value_plancks: 0,
                     call_data_hex: "0xcreateToken".to_string(),
                 }),
             }
@@ -58,8 +68,8 @@ impl AgentOrchestrator {
                 summary: "Settling HTTP 402 challenge on Polkadot Asset Hub".to_string(),
                 requires_wallet_signature: true,
                 tx_proposal: Some(TransactionProposal {
-                    target: "X402SettlementAddress".to_string(),
-                    value_dot: "0.05".to_string(),
+                    target: self.x402_settlement_account,
+                    value_plancks: 50_000_000_000, // 0.05 DOT in 10-decimal plancks
                     call_data_hex: "0xsettleDot".to_string(),
                 }),
             }
@@ -67,7 +77,10 @@ impl AgentOrchestrator {
             AgentActionProposal {
                 proposal_id,
                 action_type: ActionType::GeneralChat,
-                summary: format!("Processed query with {}: '{}'", self.default_model, user_prompt),
+                summary: format!(
+                    "Processed query with {}: '{}'",
+                    self.default_model, user_prompt
+                ),
                 requires_wallet_signature: false,
                 tx_proposal: None,
             }
@@ -79,28 +92,38 @@ impl AgentOrchestrator {
 mod tests {
     use super::*;
 
+    fn mock_account(id: u8) -> AccountId32 {
+        AccountId32::new([id; 32])
+    }
+
     #[test]
     fn test_intent_launch_token_proposal() {
-        let orch = AgentOrchestrator::new("gemini-1.5-pro");
+        let factory = mock_account(1);
+        let settlement = mock_account(2);
+        let orch = AgentOrchestrator::new("gemini-1.5-pro", factory, settlement);
         let proposal = orch.process_intent("Please launch token named Qmoosa Token symbol QDOT");
         assert_eq!(proposal.action_type, ActionType::LaunchToken);
         assert!(proposal.requires_wallet_signature);
-        assert!(proposal.tx_proposal.is_some());
+        assert_eq!(proposal.tx_proposal.unwrap().target, factory);
     }
 
     #[test]
     fn test_intent_x402_settle_proposal() {
-        let orch = AgentOrchestrator::new("gemini-1.5-pro");
+        let factory = mock_account(1);
+        let settlement = mock_account(2);
+        let orch = AgentOrchestrator::new("gemini-1.5-pro", factory, settlement);
         let proposal = orch.process_intent("Settle x402 challenge for premium inference API");
         assert_eq!(proposal.action_type, ActionType::X402Settle);
         assert!(proposal.requires_wallet_signature);
-        assert_eq!(proposal.tx_proposal.unwrap().value_dot, "0.05");
+        assert_eq!(proposal.tx_proposal.unwrap().target, settlement);
     }
 
     #[test]
     fn test_general_chat_no_signature_needed() {
-        let orch = AgentOrchestrator::new("claude-3.5-sonnet");
-        let proposal = orch.process_intent("What is PolkaVM?");
+        let factory = mock_account(1);
+        let settlement = mock_account(2);
+        let orch = AgentOrchestrator::new("gemini-1.5-pro", factory, settlement);
+        let proposal = orch.process_intent("What is the current status of Polkadot Asset Hub?");
         assert_eq!(proposal.action_type, ActionType::GeneralChat);
         assert!(!proposal.requires_wallet_signature);
         assert!(proposal.tx_proposal.is_none());

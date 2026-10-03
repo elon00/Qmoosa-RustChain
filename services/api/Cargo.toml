@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+qmoosa-primitives = { path = "../../crates/primitives" }
 qmoosa-pqc = { path = "../../crates/pqc" }
 qmoosa-x402 = { path = "../../crates/x402" }
 qmoosa-conway = { path = "../../crates/conway" }

@@ -63,6 +63,7 @@ impl ConwayEngine {
         count
     }
 
+    #[allow(clippy::needless_range_loop)]
     pub fn step(&mut self) -> Vec<AgentTaskEvent> {
         let mut next_grid = vec![vec![false; self.width]; self.height];
         let mut events = Vec::new();
@@ -83,7 +84,10 @@ impl ConwayEngine {
                     events.push(AgentTaskEvent {
                         generation: self.generation + 1,
                         trigger: AgentTaskTrigger::CellSpawn { x, y },
-                        payload: format!("Cell spawned at ({}, {}) -> Triggering Agent Swarm Task", x, y),
+                        payload: format!(
+                            "Cell spawned at ({}, {}) -> Triggering Agent Swarm Task",
+                            x, y
+                        ),
                     });
                 }
             }
@@ -92,7 +96,7 @@ impl ConwayEngine {
         self.grid = next_grid;
         self.generation += 1;
 
-        if self.generation % 10 == 0 {
+        if self.generation.is_multiple_of(10) {
             events.push(AgentTaskEvent {
                 generation: self.generation,
                 trigger: AgentTaskTrigger::EpochMilestone {
@@ -107,7 +111,10 @@ impl ConwayEngine {
     }
 
     pub fn active_cells(&self) -> usize {
-        self.grid.iter().map(|row| row.iter().filter(|&&c| c).count()).sum()
+        self.grid
+            .iter()
+            .map(|row| row.iter().filter(|&&c| c).count())
+            .sum()
     }
 }
 
