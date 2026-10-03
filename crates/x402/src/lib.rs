@@ -167,6 +167,17 @@ impl SubxtOnChainVerifier {
             .map_err(|e| X402Error::SubxtRpcError(e.to_string()))
     }
 
+    /// Queries the latest finalized block number from the connected Subxt client
+    pub async fn get_finalized_head_number(&self) -> Result<u64, X402Error> {
+        let client = self.client.as_ref().ok_or_else(|| {
+            X402Error::SubxtRpcError("Subxt live client not connected".to_string())
+        })?;
+        let finalized_head = client.at_current_block().await.map_err(|e| {
+            X402Error::SubxtRpcError(format!("Failed to query finalized head: {}", e))
+        })?;
+        Ok(finalized_head.block_number())
+    }
+
     /// Decodes a raw SCALE-encoded Balances::Transfer event payload from a Substrate block
     pub fn decode_balances_transfer(
         scale_bytes: &[u8],
@@ -230,6 +241,24 @@ impl SubxtOnChainVerifier {
     /// Verifies block finality: the block containing the transfer must be <= the latest finalized head
     pub fn verify_finality(block_number: u64, finalized_head_block: u64) -> Result<(), X402Error> {
         if block_number > finalized_head_block {
+            return Err(X402Error::TransactionNotFinalized);
+        }
+        Ok(())
+    }
+
+    /// Verifies block finality and canonical hash anchoring against the finalized chain head
+    pub fn verify_canonical_finality(
+        block_number: u64,
+        block_hash: &str,
+        finalized_head_block: u64,
+        canonical_block_hash_at_height: &str,
+    ) -> Result<(), X402Error> {
+        Self::verify_finality(block_number, finalized_head_block)?;
+        let clean_provided = block_hash.strip_prefix("0x").unwrap_or(block_hash);
+        let clean_canonical = canonical_block_hash_at_height
+            .strip_prefix("0x")
+            .unwrap_or(canonical_block_hash_at_height);
+        if !clean_provided.eq_ignore_ascii_case(clean_canonical) {
             return Err(X402Error::TransactionNotFinalized);
         }
         Ok(())
@@ -302,12 +331,16 @@ impl SubxtOnChainVerifier {
     /// Ingests and registers an on-chain transfer event by actively scanning a finalized block using the live Subxt client.
     ///
     /// Cryptographic & Consensus Security Enforcements:
-    /// 1. Finds the exact extrinsic in the block matching `expected_tx_hash` (Blake2b hash match).
-    /// 2. Resolves the real `extrinsic_index` for that extrinsic.
-    /// 3. Extracts the true `block_number` from the verified block header.
-    /// 4. Filters events strictly by `Phase::ApplyExtrinsic(target_index)` so that NO unrelated events
+    /// 1. Extracts the true `block_number` from the verified block header.
+    /// 2. Validates consensus finality: queries the node's latest finalized block (`client.at_current_block()`)
+    ///    and ensures the block is at or before the finalized head.
+    /// 3. Validates canonical chain anchoring: fetches canonical block at that height to ensure the supplied
+    ///    block is part of the finalized canonical chain and not an unfinalized or orphaned fork.
+    /// 4. Finds the exact extrinsic in the block matching `expected_tx_hash` (Blake2b hash match).
+    /// 5. Resolves the real `extrinsic_index` for that extrinsic.
+    /// 6. Filters events strictly by `Phase::ApplyExtrinsic(target_index)` so that NO unrelated events
     ///    in the block can be spoofed or attributed to this transaction.
-    /// 5. Ingests and registers the exact matching transfer details into `verified_events`.
+    /// 7. Ingests and registers the exact matching transfer details into `verified_events`.
     pub async fn scan_and_register_block(
         &self,
         block_hash_bytes: [u8; 32],
@@ -330,7 +363,29 @@ impl SubxtOnChainVerifier {
             .map_err(|e| X402Error::SubxtRpcError(e.to_string()))?;
         let real_block_number = block_header.number as u64;
 
-        // 2. Locate exact extrinsic by Blake2b hash
+        // 2. Query latest finalized block from the Substrate node
+        let finalized_head = client.at_current_block().await.map_err(|e| {
+            X402Error::SubxtRpcError(format!("Failed to query finalized head: {}", e))
+        })?;
+        let finalized_head_number = finalized_head.block_number();
+
+        // 3. Enforce consensus finality (target block <= finalized head)
+        Self::verify_finality(real_block_number, finalized_head_number)?;
+
+        // 4. Prove canonical chain membership:
+        // Ensure block at `real_block_number` on the node's finalized canonical chain matches `block_hash`.
+        // This anchors the block to the finalized branch and rejects unfinalized / orphaned forks.
+        let canonical_at_height = client.at_block(real_block_number).await.map_err(|e| {
+            X402Error::SubxtRpcError(format!(
+                "Failed to query canonical block at height {}: {}",
+                real_block_number, e
+            ))
+        })?;
+        if canonical_at_height.block_hash() != block_hash {
+            return Err(X402Error::TransactionNotFinalized);
+        }
+
+        // 5. Locate exact extrinsic by Blake2b hash
         let extrinsics = at_block
             .extrinsics()
             .fetch()
@@ -972,6 +1027,38 @@ mod tests {
             190,
             &scale_bytes,
             "DOT",
+        );
+        assert_eq!(res, Err(X402Error::TransactionNotFinalized));
+    }
+
+    #[test]
+    fn test_subxt_canonical_finality_anchoring_pass() {
+        let block_number = 1500;
+        let block_hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+        let finalized_head = 1520;
+        let canonical_hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+
+        let res = SubxtOnChainVerifier::verify_canonical_finality(
+            block_number,
+            block_hash,
+            finalized_head,
+            canonical_hash,
+        );
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_subxt_canonical_finality_fork_hash_mismatch_fails() {
+        let block_number = 1500;
+        let fork_block_hash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let finalized_head = 1520;
+        let canonical_hash = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+        let res = SubxtOnChainVerifier::verify_canonical_finality(
+            block_number,
+            fork_block_hash,
+            finalized_head,
+            canonical_hash,
         );
         assert_eq!(res, Err(X402Error::TransactionNotFinalized));
     }
