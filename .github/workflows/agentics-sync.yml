@@ -31,6 +31,14 @@ jobs:
       - name: Checkout Qmoosa-RustChain
         uses: actions/checkout@v4
 
+      - name: Checkout official Polkadot Product SDK skills
+        uses: actions/checkout@v4
+        with:
+          repository: paritytech/product-sdk
+          ref: main
+          path: .agent-cache/product-sdk
+          persist-credentials: false
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
