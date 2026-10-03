@@ -91,8 +91,10 @@ impl AgentTool for PolkadotGetBalanceTool {
             "account": acc.to_string(),
             "prefix": prefix,
             "asset": asset,
-            "free_balance_plancks": 10_000_000_000u64, // 1 DOT
-            "status": "active"
+            "execution_mode": "live_chain_query_required",
+            "frontend_route": "@parity/product-sdk chain-client via Polkadot Host",
+            "backend_route": "Subxt OnlineClient via services/api",
+            "note": "No balance is fabricated offline; execute through an approved live chain client."
         }))
     }
 }
@@ -135,7 +137,11 @@ impl AgentTool for PolkadotTransferNativeTool {
             "recipient": recipient.to_string(),
             "amount_plancks": amount.to_string(),
             "requires_wallet_signature": true,
-            "call_data_hex": format!("0x0403{}{:032x}", hex::encode(recipient.as_bytes()), amount)
+            "proposal_kind": "structured_runtime_call",
+            "pallet": "Balances",
+            "call": "transfer_keep_alive",
+            "signing_route": "Polkadot Product Host/product-account signer or user-approved wallet",
+            "note": "Runtime call bytes must be metadata-encoded at execution time; no hand-crafted calldata is trusted."
         }))
     }
 }
@@ -183,7 +189,11 @@ impl AgentTool for PolkadotTransferAssetTool {
             "recipient": recipient.to_string(),
             "amount": amount.to_string(),
             "requires_wallet_signature": true,
-            "call_data_hex": format!("0x3201{:08x}{}{:032x}", asset_id, hex::encode(recipient.as_bytes()), amount)
+            "proposal_kind": "structured_runtime_call",
+            "pallet": "Assets",
+            "call": "transfer_keep_alive",
+            "signing_route": "Polkadot Product Host/product-account signer or user-approved wallet",
+            "note": "Runtime call bytes must be metadata-encoded at execution time; no hand-crafted calldata is trusted."
         }))
     }
 }
@@ -230,8 +240,76 @@ impl AgentTool for PolkadotXcmTransferTool {
             "destination_para_id": para_id,
             "recipient": recipient.to_string(),
             "amount_plancks": amount.to_string(),
-            "xcm_version": "V3",
+            "xcm_version": "runtime_negotiated",
             "requires_wallet_signature": true
+        }))
+    }
+}
+
+
+pub struct PolkadotAiResourcesTool;
+
+impl AgentTool for PolkadotAiResourcesTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "polkadot_ai_resources".to_string(),
+            description: "Return the official Polkadot AI-agent resources, Product SDK skills, and machine-readable docs used by this repository".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn execute(&self, _arguments: serde_json::Value) -> Result<serde_json::Value, AgentError> {
+        Ok(serde_json::json!({
+            "docs": {
+                "agent_setup": "https://docs.polkadot.com/apps/get-started/set-up-your-ai-agent/",
+                "skills": "https://docs.polkadot.com/reference/apps/skills/",
+                "llms_index": "https://docs.polkadot.com/llms.txt",
+                "llms_full": "https://docs.polkadot.com/ai/llms-full.jsonl"
+            },
+            "repositories": {
+                "product_sdk": "https://github.com/paritytech/product-sdk",
+                "playground_cli": "https://github.com/paritytech/playground-cli",
+                "contract_dependency_manager": "https://github.com/paritytech/contract-dependency-manager"
+            },
+            "rules": [
+                "Product frontend chain reads/signing/storage route through the Polkadot Host and @parity/product-sdk.",
+                "Never expose private keys or seed phrases to an AI agent.",
+                "Use product-account or user-wallet approval for signing.",
+                "Use cargo-pvm-contract / pallet-revive for Rust PolkaVM contracts; do not claim synthetic artifacts are deployable."
+            ]
+        }))
+    }
+}
+
+pub struct PolkadotHostRulesTool;
+
+impl AgentTool for PolkadotHostRulesTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition {
+            name: "polkadot_host_rules".to_string(),
+            description: "Return the execution boundary between Product frontend Host APIs and Rust backend/Subxt services".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    fn execute(&self, _arguments: serde_json::Value) -> Result<serde_json::Value, AgentError> {
+        Ok(serde_json::json!({
+            "product_frontend": {
+                "chain_access": "@parity/product-sdk via Host",
+                "signing": "product-account signer or explicit user-wallet approval",
+                "direct_rpc": false
+            },
+            "rust_backend": {
+                "chain_verification": "Subxt OnlineClient",
+                "private_key_custody": false,
+                "role": "verification, indexing, agent orchestration, x402 settlement checks"
+            }
         }))
     }
 }
@@ -250,6 +328,8 @@ impl PolkadotAgentKit {
         kit.register_tool(Arc::new(PolkadotTransferNativeTool));
         kit.register_tool(Arc::new(PolkadotTransferAssetTool));
         kit.register_tool(Arc::new(PolkadotXcmTransferTool));
+        kit.register_tool(Arc::new(PolkadotAiResourcesTool));
+        kit.register_tool(Arc::new(PolkadotHostRulesTool));
         kit
     }
 
@@ -509,7 +589,7 @@ mod tests {
 
         assert_eq!(res["action"], "PolkadotXcm.limited_teleport_assets");
         assert_eq!(res["destination_para_id"], 1000);
-        assert_eq!(res["xcm_version"], "V3");
+        assert_eq!(res["xcm_version"], "runtime_negotiated");
     }
 
     #[test]
