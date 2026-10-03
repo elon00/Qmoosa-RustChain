@@ -14,3 +14,5 @@ tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+hex.workspace = true
+parity-scale-codec.workspace = true

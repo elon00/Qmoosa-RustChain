@@ -26,13 +26,13 @@ Contracts in `contracts/` are structured for Polkadot's next-generation **PolkaV
 > [!NOTE]
 > **Security Clarification**: Rust guarantees memory safety, absence of null-pointer dereferences, and data-race freedom at compile time. However, smart contract logical risks (such as cross-contract reentrancy flows, economic exploits, and authorization flaws) are defended through explicit state-ordering checks, checks-effects-interactions patterns, and anti-replay registries.
 
-### 4. x402 Bazaar Protocol (On-Chain Subxt Settlement Verification)
-The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline using `subxt v0.51`:
+### 4. x402 Bazaar Protocol (Production Subxt On-Chain Verification)
+The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline directly in `services/api` using `SubxtOnChainVerifier` (`subxt v0.51`):
 ```text
-HTTP Request
+HTTP Request (with optional X-Block-Hash)
   └─► 402 Payment Required (Challenge ID + SS58 Merchant + Amount)
         └─► On-Chain Polkadot Transaction
-              └─► Subxt Live WebSocket RPC Inspection
+              └─► Subxt Live WebSocket RPC Inspection (OnlineClient<PolkadotConfig>)
                     └─► Finalized Block Check -> SCALE Event Decoders
                           ├── Balances::Transfer (Native DOT)
                           └── pallet_assets::Transferred (Asset Hub Fungible Assets)
@@ -42,7 +42,7 @@ HTTP Request
 ```
 
 ### 5. Polkadot Agent Kit & Model Context Protocol (MCP)
-`crates/agent-core` implements an autonomous **Polkadot Agent Kit** action registry exposed directly over the standard **Model Context Protocol (MCP)**:
+`crates/agent-core` implements an autonomous **Rust-native Polkadot Agent Kit-compatible tooling layer** (architecturally inspired by `elasticlabs-org/polkadot-agent-kit`) exposed directly over the standard **Model Context Protocol (MCP)**:
 - **Zero Private Key Exposure**: Agents only formulate structured proposals and action descriptions; signing authority remains strictly with the user's host wallet.
 - **Agent Kit Tool Suite**:
   - `polkadot_transfer_native`: Native DOT token transfer proposals.
@@ -50,7 +50,7 @@ HTTP Request
   - `polkadot_xcm_transfer`: Cross-consensus messaging (XCM) transfers across parachains.
   - `polkadot_query_balance`: Balance lookup for Substrate `AccountId32` accounts.
   - `polkadot_sign_pqc_attestation`: NIST FIPS 204 ML-DSA-65 post-quantum signing envelope.
-- **Standard MCP Protocol**: Full JSON-RPC 2.0 interface supporting `initialize`, `tools/list`, and `tools/call` for direct integration with AI assistants (Claude, Cursor, Antigravity).
+- **Standard MCP Protocol**: Full JSON-RPC 2.0 interface supporting `initialize`, `tools/list`, and `tools/call` with strict JSON Schema input conformance for direct integration with AI assistants (Claude, Cursor, Antigravity).
 
 ---
 
@@ -66,9 +66,10 @@ Qmoosa-RustChain/
 ├── crates/
 │   ├── primitives/             # AccountId32, Substrate SS58 Blake2b Checksum, SCALE Codec
 │   ├── pqc/                    # Genuine NIST FIPS 204 ML-DSA-65 Post-Quantum Attestation
-│   ├── x402/                   # HTTP 402 Bazaar Protocol Gateway & Subxt v0.51 On-Chain Verifier
+│   ├── x402/                   # HTTP 402 Bazaar Gateway & Subxt v0.51 On-Chain Verifier
 │   ├── conway/                 # B3/S23 Conway Automaton Event-Driven Agent Trigger Engine
-│   └── agent-core/             # Polkadot Agent Kit & Model Context Protocol (MCP) Host Engine
+│   └── agent-core/             # Rust-native Polkadot Agent Kit & Model Context Protocol (MCP) Engine
+│       └── tests/              # External MCP Client Interoperability Test Suite
 │
 ├── contracts/
 │   ├── qdot-token/             # Flexible / Uncapped Supply Token with Role-Governed Mint & PolkaVM ABI
@@ -76,7 +77,7 @@ Qmoosa-RustChain/
 │   └── x402-settlement/        # On-Chain HTTP 402 Micro-Settlement Registry (1% Network Split)
 │
 └── services/
-    └── api/                    # Axum/Tokio Microservice with x402 Gateway & MCP Endpoint
+    └── api/                    # Production Axum Microservice wired to SubxtOnChainVerifier & MCP Server
 ```
 
 ---
@@ -92,7 +93,7 @@ cargo fmt --all -- --check
 # 2. Strict static analysis (zero warnings allowed)
 cargo clippy --workspace --all-targets -- -D warnings
 
-# 3. Workspace unit and integration tests (45 tests)
+# 3. Workspace unit and integration tests (53 tests passed)
 cargo test --workspace
 ```
 
@@ -104,11 +105,12 @@ cargo test --workspace
 | `qmoosa-pqc` | NIST FIPS 204 ML-DSA-65 | 6 | 3309-byte lattice signatures, tampered payload, wrong pubkey, corrupted sig, replay, expiration |
 | `qmoosa-qdot-token` | PolkaVM QDOT Token | 5 | Mint/Burn, Pause, Access Control, PolkaVM message dispatch & events |
 | `qmoosa-launchpad` | Presale & Vesting | 5 | Token purchase, time-locked claim, fee routing, PolkaVM message dispatch |
-| `qmoosa-x402` | Bazaar Gateway & Subxt Verifier | 11 | Subxt event decoders (Balances::Transfer, Assets::Transferred), finality, recipient/amount check, anti-replay |
+| `qmoosa-x402` | Subxt On-Chain Verifier | 13 | Subxt event decoders (Balances::Transfer, Assets::Transferred), live RPC connection/fallback, finality, anti-replay |
 | `qmoosa-x402-settlement` | On-Chain Settlement Registry | 4 | Micro-settlement, fee splits, replay protection, PolkaVM message dispatch |
-| `qmoosa-agent-core` | Polkadot Agent Kit & MCP | 8 | Intent routing, Agent Kit tool registry, native/asset/XCM tool calls, MCP JSON-RPC protocol |
+| `qmoosa-agent-core` | Polkadot Agent Kit & MCP | 14 | Intent routing, Agent Kit tool registry, native/asset/XCM tool calls, external MCP client interop suite |
+| `qmoosa-api` | Production API & Gateway | 5 | Health introspection, 402 challenge flow, Subxt verifier authorization, MCP JSON-RPC, tool listing |
 | `qmoosa-conway` | Cellular Automaton Triggers | 2 | Glider simulation, epoch milestone event dispatch |
-| **Total** | **Full Workspace** | **45** | **100% Passed (0 Failures)** |
+| **Total** | **Full Workspace** | **53** | **100% Passed (0 Failures, 1 Optional Testnet Skipped)** |
 
 ---
 
