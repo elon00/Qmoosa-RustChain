@@ -13,7 +13,7 @@ $Cache = Join-Path $CacheRoot "product-sdk"
 $Archive = Join-Path $CacheRoot "product-sdk-main.tar.gz"
 New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null
 
-if (Test-Path (Join-Path $Cache "skills")) {
+if (Test-Path (Join-Path $Cache "product-sdk/skills")) {
     Write-Host "[1/6] Official paritytech/product-sdk skills already synchronized by environment."
 } else {
     Write-Host "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
@@ -26,7 +26,7 @@ if (Test-Path (Join-Path $Cache "skills")) {
     Remove-Item -Force $Archive
 }
 
-if (-not (Test-Path (Join-Path $Cache "skills"))) { throw "Product SDK skills directory not found" }
+if (-not (Test-Path (Join-Path $Cache "product-sdk/skills"))) { throw "Product SDK skills directory not found" }
 
 Write-Host "[2/6] Verifying required AI resource manifest..."
 $Manifest = Get-Content "agentics/polkadot-ai-resources.json" -Raw
