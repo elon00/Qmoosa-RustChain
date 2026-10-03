@@ -15,14 +15,18 @@ CACHE="$CACHE_ROOT/product-sdk"
 ARCHIVE="$CACHE_ROOT/product-sdk-main.tar.gz"
 mkdir -p "$CACHE_ROOT"
 
-echo "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
-rm -rf "$CACHE" "$ARCHIVE"
-mkdir -p "$CACHE"
-curl --fail --silent --show-error --location --retry 3 \
-  https://github.com/paritytech/product-sdk/archive/refs/heads/main.tar.gz \
-  --output "$ARCHIVE"
-tar -xzf "$ARCHIVE" --strip-components=1 -C "$CACHE"
-rm -f "$ARCHIVE"
+if [ -d "$CACHE/skills" ]; then
+  echo "[1/6] Official paritytech/product-sdk skills already synchronized by environment."
+else
+  echo "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
+  rm -rf "$CACHE" "$ARCHIVE"
+  mkdir -p "$CACHE"
+  curl --fail --show-error --location --retry 3 \
+    https://github.com/paritytech/product-sdk/archive/refs/heads/main.tar.gz \
+    --output "$ARCHIVE"
+  tar -xzf "$ARCHIVE" --strip-components=1 -C "$CACHE"
+  rm -f "$ARCHIVE"
+fi
 
 test -d "$CACHE/skills"
 echo "      Product SDK skills synchronized."
