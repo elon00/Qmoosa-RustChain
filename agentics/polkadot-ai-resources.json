@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "purpose": "Source-of-truth manifest for Qmoosa-RustChain AI agentics synchronization",
+  "official_docs": {
+    "agent_setup": "https://docs.polkadot.com/apps/get-started/set-up-your-ai-agent/",
+    "skills": "https://docs.polkadot.com/reference/apps/skills/",
+    "llms_index": "https://docs.polkadot.com/llms.txt",
+    "llms_full": "https://docs.polkadot.com/ai/llms-full.jsonl"
+  },
+  "official_repositories": {
+    "product_sdk": "https://github.com/paritytech/product-sdk",
+    "playground_cli": "https://github.com/paritytech/playground-cli",
+    "contract_dependency_manager": "https://github.com/paritytech/contract-dependency-manager"
+  },
+  "required_runtime_tools": [
+    "polkadot_get_balance",
+    "polkadot_transfer_native",
+    "polkadot_transfer_asset",
+    "polkadot_xcm_transfer",
+    "polkadot_ai_resources",
+    "polkadot_host_rules"
+  ],
+  "safety_invariants": [
+    "No private keys or seed phrases in AI context",
+    "No fabricated chain balances or state",
+    "No hand-crafted runtime calldata accepted as authoritative",
+    "Frontend Product chain/signing access goes through Polkadot Host and @parity/product-sdk",
+    "Backend verification may use Subxt",
+    "Contract deployment claims require real compiler and finalized on-chain evidence"
+  ]
+}
