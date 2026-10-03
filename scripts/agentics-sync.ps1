@@ -14,11 +14,11 @@ New-Item -ItemType Directory -Force -Path $CacheRoot | Out-Null
 
 if (Test-Path (Join-Path $Cache ".git")) {
     Write-Host "[1/6] Refreshing official paritytech/product-sdk skills..."
-    git -C $Cache fetch --depth 1 origin
+    git -c "http.https://github.com/.extraheader=" -C $Cache fetch --depth 1 origin
     git -C $Cache reset --hard origin/HEAD
 } else {
     Write-Host "[1/6] Cloning official paritytech/product-sdk skills..."
-    git clone --depth 1 https://github.com/paritytech/product-sdk.git $Cache
+    git -c "http.https://github.com/.extraheader=" clone --depth 1 https://github.com/paritytech/product-sdk.git $Cache
 }
 if (-not (Test-Path (Join-Path $Cache "skills"))) { throw "Product SDK skills directory not found" }
 
