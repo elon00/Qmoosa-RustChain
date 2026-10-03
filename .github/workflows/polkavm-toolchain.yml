@@ -1,0 +1,32 @@
+name: PolkaVM Toolchain Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  toolchain:
+    name: Verify Rust PolkaVM Toolchain
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly with rust-src
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+
+      - name: Install cargo-pvm-contract
+        run: cargo install cargo-pvm-contract --locked
+
+      - name: Verify toolchain
+        run: |
+          rustc +nightly --version
+          cargo +nightly --version
+          cargo pvm-contract --help
+
+      - name: Explain current build boundary
+        run: |
+          echo "Toolchain verified."
+          echo "Existing contracts are still Rust domain crates, not cargo-pvm-contract projects."
+          echo "Migration starts with contracts/qdot-token before deployable .polkavm artifacts are expected."
