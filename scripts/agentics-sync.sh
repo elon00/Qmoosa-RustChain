@@ -7,19 +7,22 @@ cd "$ROOT"
 echo "== Qmoosa-RustChain AI Agentics Single-Click Sync =="
 
 command -v cargo >/dev/null
-command -v git >/dev/null
+command -v curl >/dev/null
+command -v tar >/dev/null
 
-CACHE="$ROOT/.agent-cache/product-sdk"
-mkdir -p "$ROOT/.agent-cache"
+CACHE_ROOT="$ROOT/.agent-cache"
+CACHE="$CACHE_ROOT/product-sdk"
+ARCHIVE="$CACHE_ROOT/product-sdk-main.tar.gz"
+mkdir -p "$CACHE_ROOT"
 
-if [ -d "$CACHE/.git" ]; then
-  echo "[1/6] Refreshing official paritytech/product-sdk skills..."
-  git -c http.https://github.com/.extraheader= -C "$CACHE" fetch --depth 1 origin
-  git -C "$CACHE" reset --hard origin/HEAD
-else
-  echo "[1/6] Cloning official paritytech/product-sdk skills..."
-  git -c http.https://github.com/.extraheader= clone --depth 1 https://github.com/paritytech/product-sdk.git "$CACHE"
-fi
+echo "[1/6] Synchronizing official paritytech/product-sdk skills from GitHub tarball..."
+rm -rf "$CACHE" "$ARCHIVE"
+mkdir -p "$CACHE"
+curl --fail --silent --show-error --location --retry 3 \
+  https://github.com/paritytech/product-sdk/archive/refs/heads/main.tar.gz \
+  --output "$ARCHIVE"
+tar -xzf "$ARCHIVE" --strip-components=1 -C "$CACHE"
+rm -f "$ARCHIVE"
 
 test -d "$CACHE/skills"
 echo "      Product SDK skills synchronized."
