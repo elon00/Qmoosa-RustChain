@@ -1,0 +1,191 @@
+{
+  "engine": "REA_Reverse_Engineer_Anything",
+  "status": "STRUCTURE_RECONSTRUCTED",
+  "analyzed_files": 61,
+  "manifest": {
+    "AGENTS.md": {
+      "bytes": 3038
+    },
+    "Cargo.toml": {
+      "bytes": 927
+    },
+    "README.md": {
+      "bytes": 10037
+    },
+    ".github\\copilot-instructions.md": {
+      "bytes": 867
+    },
+    "agentics\\polkadot-ai-resources.json": {
+      "bytes": 1338
+    },
+    "artifacts\\deployments.json": {
+      "bytes": 2337
+    },
+    "artifacts\\launchpad.abi.json": {
+      "bytes": 1055
+    },
+    "artifacts\\launchpad.polkavm": {
+      "bytes": 2411
+    },
+    "artifacts\\qdot_token.abi.json": {
+      "bytes": 1493
+    },
+    "artifacts\\qdot_token.polkavm": {
+      "bytes": 3014
+    },
+    "artifacts\\x402_settlement.abi.json": {
+      "bytes": 1096
+    },
+    "artifacts\\x402_settlement.polkavm": {
+      "bytes": 2567
+    },
+    "docs\\PHASE2_POLKAVM.md": {
+      "bytes": 2173
+    },
+    "scripts\\agentics-sync.ps1": {
+      "bytes": 3067
+    },
+    "scripts\\agentics-sync.sh": {
+      "bytes": 2373
+    },
+    "scripts\\automate-mission.ps1": {
+      "bytes": 6949
+    },
+    "scripts\\automate-mission.sh": {
+      "bytes": 5084
+    },
+    "scripts\\rea_inspector.py": {
+      "bytes": 1485
+    },
+    "scripts\\rsi_engine.py": {
+      "bytes": 2039
+    },
+    "tests\\reality_check_harness.py": {
+      "bytes": 1364
+    },
+    ".github\\workflows\\agentics-sync.yml": {
+      "bytes": 1296
+    },
+    ".github\\workflows\\polkavm-toolchain.yml": {
+      "bytes": 952
+    },
+    ".github\\workflows\\qmoosa-rsi-rea-sync.yml": {
+      "bytes": 531
+    },
+    ".github\\workflows\\rust.yml": {
+      "bytes": 802
+    },
+    "contracts\\launchpad\\Cargo.toml": {
+      "bytes": 310
+    },
+    "contracts\\qdot-token\\Cargo.toml": {
+      "bytes": 311
+    },
+    "contracts\\x402-settlement\\Cargo.toml": {
+      "bytes": 316
+    },
+    "contracts\\launchpad\\src\\lib.rs": {
+      "bytes": 12693
+    },
+    "contracts\\qdot-token\\src\\lib.rs": {
+      "bytes": 11117
+    },
+    "contracts\\x402-settlement\\src\\lib.rs": {
+      "bytes": 6373
+    },
+    "crates\\agent-core\\Cargo.toml": {
+      "bytes": 311
+    },
+    "crates\\conway\\Cargo.toml": {
+      "bytes": 184
+    },
+    "crates\\pqc\\Cargo.toml": {
+      "bytes": 321
+    },
+    "crates\\primitives\\Cargo.toml": {
+      "bytes": 323
+    },
+    "crates\\x402\\Cargo.toml": {
+      "bytes": 429
+    },
+    "crates\\agent-core\\src\\lib.rs": {
+      "bytes": 26451
+    },
+    "crates\\agent-core\\tests\\mcp_client_interop.rs": {
+      "bytes": 6348
+    },
+    "crates\\conway\\src\\lib.rs": {
+      "bytes": 4756
+    },
+    "crates\\pqc\\src\\lib.rs": {
+      "bytes": 7867
+    },
+    "crates\\primitives\\src\\lib.rs": {
+      "bytes": 6668
+    },
+    "crates\\x402\\src\\lib.rs": {
+      "bytes": 56114
+    },
+    "pvm-contracts\\launchpad\\build.rs": {
+      "bytes": 76
+    },
+    "pvm-contracts\\launchpad\\Cargo.toml": {
+      "bytes": 461
+    },
+    "pvm-contracts\\launchpad\\riscv64emac-unknown-none-polkavm.json": {
+      "bytes": 1051
+    },
+    "pvm-contracts\\launchpad\\rust-toolchain.toml": {
+      "bytes": 34
+    },
+    "pvm-contracts\\qdot-token\\build.rs": {
+      "bytes": 76
+    },
+    "pvm-contracts\\qdot-token\\Cargo.toml": {
+      "bytes": 463
+    },
+    "pvm-contracts\\qdot-token\\riscv64emac-unknown-none-polkavm.json": {
+      "bytes": 1051
+    },
+    "pvm-contracts\\qdot-token\\rust-toolchain.toml": {
+      "bytes": 34
+    },
+    "pvm-contracts\\x402-settlement\\build.rs": {
+      "bytes": 76
+    },
+    "pvm-contracts\\x402-settlement\\Cargo.toml": {
+      "bytes": 473
+    },
+    "pvm-contracts\\x402-settlement\\riscv64emac-unknown-none-polkavm.json": {
+      "bytes": 1051
+    },
+    "pvm-contracts\\x402-settlement\\rust-toolchain.toml": {
+      "bytes": 34
+    },
+    "pvm-contracts\\launchpad\\src\\main.rs": {
+      "bytes": 5634
+    },
+    "pvm-contracts\\qdot-token\\src\\main.rs": {
+      "bytes": 7459
+    },
+    "pvm-contracts\\x402-settlement\\src\\main.rs": {
+      "bytes": 5528
+    },
+    "scripts\\polkavm\\build-contract.sh": {
+      "bytes": 671
+    },
+    "scripts\\polkavm\\setup-toolchain.ps1": {
+      "bytes": 770
+    },
+    "scripts\\polkavm\\setup-toolchain.sh": {
+      "bytes": 679
+    },
+    "services\\api\\Cargo.toml": {
+      "bytes": 543
+    },
+    "services\\api\\src\\main.rs": {
+      "bytes": 13624
+    }
+  },
+  "timestamp": 1794024822
+}
