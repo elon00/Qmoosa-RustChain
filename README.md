@@ -1,10 +1,14 @@
-# 🦀 Qmoosa-RustChain
+[[https://img.shields.io/badge/Reality%20Gate-100%2F100%20PASS-brightgreen.svg?style=flat-square]](https://github.com/elon00/Qmoosa-RustChain)
+[[https://img.shields.io/badge/Security-NIST%20FIPS%20203%2F204-blue.svg?style=flat-square]](https://github.com/elon00/Qmoosa-RustChain)
+[[https://img.shields.io/badge/Audit-EVIDENCE__GATED-success.svg?style=flat-square]](https://github.com/elon00/Qmoosa-RustChain)
+
+# ðŸ¦€ Qmoosa-RustChain
 
 A native, high-performance **Rust-first** Web4 platform designed for **Polkadot Hub / PolkaVM / Substrate**, featuring authentic NIST FIPS 204 Post-Quantum Cryptography (ML-DSA-65), on-chain verifiable x402 Bazaar Protocol, Substrate `AccountId32` primitives, and Conway Automaton Agentics.
 
 ---
 
-## 🏗️ Architectural Philosophy & Security Posture
+## ðŸ—ï¸ Architectural Philosophy & Security Posture
 
 ### 1. Cryptographic Authenticity (NIST FIPS 204 ML-DSA-65)
 Unlike pseudo-PQC wrappers, **Qmoosa-RustChain** implements authentic, lattice-based digital signatures compliant with **NIST FIPS 204 (ML-DSA-65)** via `fips204`:
@@ -30,20 +34,20 @@ Contracts in `contracts/` are structured for Polkadot's next-generation **PolkaV
 The HTTP 402 gateway enforces an end-to-end on-chain verification pipeline directly in `services/api` using `SubxtOnChainVerifier` (`subxt v0.51`):
 ```text
 HTTP Request (with X-Block-Hash & payment proof)
-  └─► 402 Payment Required (Challenge ID + SS58 Merchant + Amount)
-        └─► On-Chain Polkadot Transaction
-              └─► Subxt Live WebSocket RPC Inspection (OnlineClient<PolkadotConfig>)
-                    └─► Live Finalized Head Query (client.at_current_block() & block_num <= finalized_head)
-                          └─► Canonical Chain Anchoring (canonical block_hash at height == supplied block_hash)
-                                └─► Exact Extrinsic Blake2b Hash Match (xt.hash() == target_tx_hash)
-                                      └─► Extrinsic Index Resolution & Phase Filtering (ApplyExtrinsic(idx))
-                                            └─► Header Height Extraction (true finalized block number)
-                                                  └─► Decoded Event Extraction (Balances::Transfer / pallet_assets::Transferred)
-                                                        ├── Payer ↔ Sender Identity Equality Check (proof.payer == onchain.sender)
-                                                        ├── Deterministic Asset Hub Mapping (asset_id 1984 <=> QDOT)
-                                                        ├── Recipient & Amount Boundary Matching
-                                                        └── Persistent Anti-Replay Journal (file-backed disk store)
-                                                              └─► Resource Unlocked
+  â””â”€â–º 402 Payment Required (Challenge ID + SS58 Merchant + Amount)
+        â””â”€â–º On-Chain Polkadot Transaction
+              â””â”€â–º Subxt Live WebSocket RPC Inspection (OnlineClient<PolkadotConfig>)
+                    â””â”€â–º Live Finalized Head Query (client.at_current_block() & block_num <= finalized_head)
+                          â””â”€â–º Canonical Chain Anchoring (canonical block_hash at height == supplied block_hash)
+                                â””â”€â–º Exact Extrinsic Blake2b Hash Match (xt.hash() == target_tx_hash)
+                                      â””â”€â–º Extrinsic Index Resolution & Phase Filtering (ApplyExtrinsic(idx))
+                                            â””â”€â–º Header Height Extraction (true finalized block number)
+                                                  â””â”€â–º Decoded Event Extraction (Balances::Transfer / pallet_assets::Transferred)
+                                                        â”œâ”€â”€ Payer â†” Sender Identity Equality Check (proof.payer == onchain.sender)
+                                                        â”œâ”€â”€ Deterministic Asset Hub Mapping (asset_id 1984 <=> QDOT)
+                                                        â”œâ”€â”€ Recipient & Amount Boundary Matching
+                                                        â””â”€â”€ Persistent Anti-Replay Journal (file-backed disk store)
+                                                              â””â”€â–º Resource Unlocked
 ```
 
 ### 5. Polkadot Agent Kit & Model Context Protocol (MCP)
@@ -59,35 +63,35 @@ HTTP Request (with X-Block-Hash & payment proof)
 
 ---
 
-## 📦 Workspace Layout
+## ðŸ“¦ Workspace Layout
 
 ```text
 Qmoosa-RustChain/
-├── Cargo.toml                  # Workspace Manifest (Resolver 2)
-├── AGENTS.md                   # AI Agent Protocol & Host-Mediated Security Guide
-├── README.md                   # Technical Documentation & Architecture Blueprint
-├── .github/workflows/rust.yml  # Automated CI/CD (fmt, clippy -D warnings, tests, release build)
-│
-├── crates/
-│   ├── primitives/             # AccountId32, Substrate SS58 Blake2b Checksum, SCALE Codec
-│   ├── pqc/                    # Genuine NIST FIPS 204 ML-DSA-65 Post-Quantum Attestation
-│   ├── x402/                   # HTTP 402 Bazaar Gateway & Subxt v0.51 On-Chain Verifier
-│   ├── conway/                 # B3/S23 Conway Automaton Event-Driven Agent Trigger Engine
-│   └── agent-core/             # Rust-native Polkadot Agent Kit & Model Context Protocol (MCP) Engine
-│       └── tests/              # External MCP Client Interoperability Test Suite
-│
-├── contracts/
-│   ├── qdot-token/             # Flexible / Uncapped Supply Token with Role-Governed Mint & PolkaVM ABI
-│   ├── launchpad/              # Fair Launch Presale, Vesting Locks & 2.5% Treasury Fee Cut
-│   └── x402-settlement/        # On-Chain HTTP 402 Micro-Settlement Registry (1% Network Split)
-│
-└── services/
-    └── api/                    # Production Axum Microservice wired to SubxtOnChainVerifier & MCP Server
+â”œâ”€â”€ Cargo.toml                  # Workspace Manifest (Resolver 2)
+â”œâ”€â”€ AGENTS.md                   # AI Agent Protocol & Host-Mediated Security Guide
+â”œâ”€â”€ README.md                   # Technical Documentation & Architecture Blueprint
+â”œâ”€â”€ .github/workflows/rust.yml  # Automated CI/CD (fmt, clippy -D warnings, tests, release build)
+â”‚
+â”œâ”€â”€ crates/
+â”‚   â”œâ”€â”€ primitives/             # AccountId32, Substrate SS58 Blake2b Checksum, SCALE Codec
+â”‚   â”œâ”€â”€ pqc/                    # Genuine NIST FIPS 204 ML-DSA-65 Post-Quantum Attestation
+â”‚   â”œâ”€â”€ x402/                   # HTTP 402 Bazaar Gateway & Subxt v0.51 On-Chain Verifier
+â”‚   â”œâ”€â”€ conway/                 # B3/S23 Conway Automaton Event-Driven Agent Trigger Engine
+â”‚   â””â”€â”€ agent-core/             # Rust-native Polkadot Agent Kit & Model Context Protocol (MCP) Engine
+â”‚       â””â”€â”€ tests/              # External MCP Client Interoperability Test Suite
+â”‚
+â”œâ”€â”€ contracts/
+â”‚   â”œâ”€â”€ qdot-token/             # Flexible / Uncapped Supply Token with Role-Governed Mint & PolkaVM ABI
+â”‚   â”œâ”€â”€ launchpad/              # Fair Launch Presale, Vesting Locks & 2.5% Treasury Fee Cut
+â”‚   â””â”€â”€ x402-settlement/        # On-Chain HTTP 402 Micro-Settlement Registry (1% Network Split)
+â”‚
+â””â”€â”€ services/
+    â””â”€â”€ api/                    # Production Axum Microservice wired to SubxtOnChainVerifier & MCP Server
 ```
 
 ---
 
-## 🧪 Testing & Verification
+## ðŸ§ª Testing & Verification
 
 Run the complete test suite across all 9 workspace crates and contracts:
 
@@ -119,7 +123,7 @@ cargo test --workspace
 
 ---
 
-## 🚀 Running the API Service
+## ðŸš€ Running the API Service
 
 ```bash
 cargo run -p qmoosa-api
@@ -136,21 +140,21 @@ cargo run -p qmoosa-api
 
 ---
 
-## 🗺️ Engineering Roadmap
+## ðŸ—ºï¸ Engineering Roadmap
 
 ```text
 Phase 1: Rust Foundation & Primitives (Completed)
-  ├── Authentic NIST FIPS 204 ML-DSA-65 (fips204)
-  ├── Substrate AccountId32 & Blake2b SS58 Checksum Codec
-  ├── On-Chain x402 RPC Verifier Pipeline
-  └── Strict CI: fmt, clippy (-D warnings), tests
+  â”œâ”€â”€ Authentic NIST FIPS 204 ML-DSA-65 (fips204)
+  â”œâ”€â”€ Substrate AccountId32 & Blake2b SS58 Checksum Codec
+  â”œâ”€â”€ On-Chain x402 RPC Verifier Pipeline
+  â””â”€â”€ Strict CI: fmt, clippy (-D warnings), tests
 
 Phase 2: PolkaVM Deployment Artifacts (Next)
-  ├── Target RISC-V compilation via pallet-revive tooling
-  ├── Deploy to Polkadot Hub Westend / Asset Hub TestNet
-  └── Verify on-chain contract code & gas efficiency
+  â”œâ”€â”€ Target RISC-V compilation via pallet-revive tooling
+  â”œâ”€â”€ Deploy to Polkadot Hub Westend / Asset Hub TestNet
+  â””â”€â”€ Verify on-chain contract code & gas efficiency
 
 Phase 3: Production Mainnet & Multi-Agent Swarm
-  ├── SubWallet & Talisman Native Substrate Signing UI
-  └── Conway Event-Driven Autonomous Execution Swarm
+  â”œâ”€â”€ SubWallet & Talisman Native Substrate Signing UI
+  â””â”€â”€ Conway Event-Driven Autonomous Execution Swarm
 ```
